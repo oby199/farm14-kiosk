@@ -148,7 +148,13 @@ function handleNewVisitor() {
   setTimeout(() => {
     speak("من فضلك اختر اللغة التي ترغب باستخدامها: العربية أم الإنجليزية؟ Please select the language you want: Arabic or English");
     hasAskedForLanguage = true;
-    if (recognition && !isListening) recognition.start();
+    if (recognition && !isListening) {
+      try {
+        recognition.start();
+      } catch (err) {
+        console.warn('SpeechRecognition already started or failed:', err);
+      }
+    }
   }, 6000);
 }
 
@@ -182,8 +188,14 @@ function initializeSpeechRecognition() {
     updateMicButton(false);
     if (isFacePresent && (hasAskedForLanguage || hasAskedForQuestion)) {
       setTimeout(() => {
-        if (!isListening) recognition.start();
-      }, 1000);
+        if (!isListening) {
+          try {
+            recognition.start();
+          } catch (err) {
+            console.warn('SpeechRecognition already started or failed:', err);
+          }
+        }
+      }, 2000);
     }
   };
 
@@ -207,7 +219,13 @@ function initializeSpeechRecognition() {
       setTimeout(() => {
         speak(currentLanguage === 'ar' ? "ماذا تريد أن تعرف عن مزرعة 14؟" : "What do you want to know about Farm 14?");
         recognition.lang = currentLanguage === 'ar' ? 'ar-SA' : 'en-US';
-        if (!isListening) recognition.start();
+        if (!isListening) {
+          try {
+            recognition.start();
+          } catch (err) {
+            console.warn('SpeechRecognition already started or failed:', err);
+          }
+        }
       }, 6000);
     } else {
       processUserQuery(transcript);
