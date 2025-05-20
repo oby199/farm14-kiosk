@@ -61,8 +61,6 @@ const translations = {
 document.addEventListener('DOMContentLoaded', init);
 
 async function init() {
-  showTapToBeginOverlay();
-  setupVoiceUnlock();
   loadVoices();
 
   await initializeFaceDetection();
@@ -76,20 +74,6 @@ async function init() {
   updateEnvironmentData();
   updateDateTime();
 }
-
-window.addEventListener('DOMContentLoaded', () => {
-  const overlay = document.getElementById('tap-to-begin-overlay');
-  if (overlay) {
-    overlay.addEventListener('click', () => {
-      console.log('[🟢] Overlay click – unlocking voice');
-      unlockVoice();
-    }, { once: true });
-    overlay.addEventListener('touchstart', () => {
-      console.log('[🟢] Overlay touchstart – unlocking voice');
-      unlockVoice();
-    }, { once: true });
-  }
-});
 
 // ==== FACE DETECTION ====
 async function initializeFaceDetection() {
@@ -421,52 +405,4 @@ function setupEventListeners() {
     if (!isListening) recognition?.start();
     else recognition?.stop();
   });
-}
-
-function setupVoiceUnlock() {
-  ['click', 'touchstart', 'keydown'].forEach(event => {
-    window.addEventListener(event, () => {
-      console.log(`[🟢] Window event (${event}) – unlocking voice`);
-      unlockVoice();
-    }, { once: true, passive: true });
-    document.addEventListener(event, () => {
-      console.log(`[🟢] Document event (${event}) – unlocking voice`);
-      unlockVoice();
-    }, { once: true, passive: true });
-  });
-}
-
-function unlockVoice() {
-  if (voiceReady) return;
-  voiceReady = true;
-
-  // Hide the overlay
-  const overlay = document.getElementById('tap-to-begin-overlay');
-  if (overlay) {
-    overlay.remove();
-    console.log('[🟢] Overlay removed by unlockVoice');
-  }
-
-  // Unlock speech synthesis with dummy utterance
-  const u = new SpeechSynthesisUtterance(" ");
-  u.lang = 'en-US';
-  u.volume = 0.01;
-  speechSynthesis.speak(u);
-}
-
-function showTapToBeginOverlay() {
-  const overlay = document.createElement('div');
-  overlay.id = 'tap-to-begin-overlay';
-  overlay.style = `
-    position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
-    background: rgba(245, 233, 198, 0.98); z-index: 10000; display: flex;
-    align-items: center; justify-content: center; flex-direction: column;
-    font-size: 2.2em; color: #333; font-family: inherit;
-  `;
-  overlay.innerHTML = `
-    <div style="margin-bottom: 24px;">👆</div>
-    <div>Tap to Begin</div>
-    <div style="font-size: 0.6em; margin-top: 16px; color: #888;">يرجى النقر للبدء</div>
-  `;
-  document.body.appendChild(overlay);
 }
