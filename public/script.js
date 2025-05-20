@@ -410,23 +410,25 @@ function setupEventListeners() {
 }
 
 function setupVoiceUnlock() {
-  ['click', 'touchstart', 'keydown', 'mousedown'].forEach(evt => {
-    window.addEventListener(evt, unlockVoice, { once: true, passive: true });
-    document.addEventListener(evt, unlockVoice, { once: true, passive: true });
+  ['click', 'touchstart', 'keydown'].forEach(event => {
+    window.addEventListener(event, unlockVoice, { once: true });
+    document.addEventListener(event, unlockVoice, { once: true });
   });
 }
 
 function unlockVoice() {
   if (voiceReady) return;
-
   voiceReady = true;
-  hideTapToBeginOverlay();
 
-  // 🧠 Unlock iOS voice by speaking a harmless utterance
-  const unlockUtterance = new SpeechSynthesisUtterance('Voice system unlocked');
-  unlockUtterance.lang = 'en-US';
-  unlockUtterance.volume = 0.01; // almost silent
-  speechSynthesis.speak(unlockUtterance);
+  // Hide the overlay
+  const overlay = document.getElementById('tap-to-begin-overlay');
+  if (overlay) overlay.remove();
+
+  // Unlock speech synthesis with dummy utterance
+  const u = new SpeechSynthesisUtterance(" ");
+  u.lang = 'en-US';
+  u.volume = 0.01;
+  speechSynthesis.speak(u);
 }
 
 function showTapToBeginOverlay() {
@@ -444,9 +446,4 @@ function showTapToBeginOverlay() {
     <div style="font-size: 0.6em; margin-top: 16px; color: #888;">يرجى النقر للبدء</div>
   `;
   document.body.appendChild(overlay);
-}
-
-function hideTapToBeginOverlay() {
-  const overlay = document.getElementById('tap-to-begin-overlay');
-  if (overlay) overlay.remove();
 }
