@@ -670,3 +670,8 @@ button,
 .touch-feedback:active {
   transform: scale(var(--touch-scale));
   }
+
+#tap-to-begin-overlay {
+  pointer-events: auto;
+  cursor: pointer;
+}

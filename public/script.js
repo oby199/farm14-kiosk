@@ -392,19 +392,23 @@ function setupEventListeners() {
 }
 
 function setupVoiceUnlock() {
-  document.addEventListener('click', unlockVoice, { once: true });
-  document.addEventListener('touchstart', unlockVoice, { once: true });
+  ['click', 'touchstart', 'keydown', 'mousedown'].forEach(evt => {
+    window.addEventListener(evt, unlockVoice, { once: true, passive: true });
+    document.addEventListener(evt, unlockVoice, { once: true, passive: true });
+  });
 }
 
 function unlockVoice() {
-  if (!voiceReady) {
-    voiceReady = true;
-    hideTapToBeginOverlay();
-    // Speech synthesis warm-up for mobile/iOS
-    const silentUtterance = new SpeechSynthesisUtterance("Hello");
-    silentUtterance.lang = 'en-US';
-    speechSynthesis.speak(silentUtterance);
-  }
+  if (voiceReady) return;
+
+  voiceReady = true;
+  hideTapToBeginOverlay();
+
+  // 🧠 Unlock iOS voice by speaking a harmless utterance
+  const unlockUtterance = new SpeechSynthesisUtterance('Voice system unlocked');
+  unlockUtterance.lang = 'en-US';
+  unlockUtterance.volume = 0.01; // almost silent
+  speechSynthesis.speak(unlockUtterance);
 }
 
 function showTapToBeginOverlay() {
