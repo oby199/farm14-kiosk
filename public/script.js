@@ -80,8 +80,14 @@ async function init() {
 window.addEventListener('DOMContentLoaded', () => {
   const overlay = document.getElementById('tap-to-begin-overlay');
   if (overlay) {
-    overlay.addEventListener('click', unlockVoice, { once: true });
-    overlay.addEventListener('touchstart', unlockVoice, { once: true });
+    overlay.addEventListener('click', () => {
+      console.log('[🟢] Overlay click – unlocking voice');
+      unlockVoice();
+    }, { once: true });
+    overlay.addEventListener('touchstart', () => {
+      console.log('[🟢] Overlay touchstart – unlocking voice');
+      unlockVoice();
+    }, { once: true });
   }
 });
 
@@ -418,14 +424,13 @@ function setupEventListeners() {
 }
 
 function setupVoiceUnlock() {
-  ['click', 'touchstart', 'keydown'].forEach(evt => {
-    window.addEventListener(evt, () => {
-      console.log('[🟢] User tap detected – unlocking voice');
+  ['click', 'touchstart', 'keydown'].forEach(event => {
+    window.addEventListener(event, () => {
+      console.log(`[🟢] Window event (${event}) – unlocking voice`);
       unlockVoice();
     }, { once: true, passive: true });
-
-    document.addEventListener(evt, () => {
-      console.log('[🟢] Doc interaction – unlocking voice');
+    document.addEventListener(event, () => {
+      console.log(`[🟢] Document event (${event}) – unlocking voice`);
       unlockVoice();
     }, { once: true, passive: true });
   });
@@ -437,7 +442,10 @@ function unlockVoice() {
 
   // Hide the overlay
   const overlay = document.getElementById('tap-to-begin-overlay');
-  if (overlay) overlay.remove();
+  if (overlay) {
+    overlay.remove();
+    console.log('[🟢] Overlay removed by unlockVoice');
+  }
 
   // Unlock speech synthesis with dummy utterance
   const u = new SpeechSynthesisUtterance(" ");
