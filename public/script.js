@@ -110,6 +110,7 @@ async function detectFace() {
   faceapi.matchDimensions(canvas, displaySize);
   canvas.width = displaySize.width;
   canvas.height = displaySize.height;
+  canvas.style.display = 'block';
 
   const video = document.getElementById('video');
   if (!video) return;
@@ -120,10 +121,11 @@ async function detectFace() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
   if (resized.length > 0) {
+    ctx.strokeStyle = '#00ff00';
+    ctx.lineWidth = 3;
     resized.forEach(d => {
-      ctx.strokeStyle = '#00ff00';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(d.box.x, d.box.y, d.box.width, d.box.height);
+      const box = d.box;
+      ctx.strokeRect(box.x, box.y, box.width, box.height);
     });
 
     if (!isFacePresent) {
@@ -146,7 +148,7 @@ function handleNewVisitor() {
     speak("من فضلك اختر اللغة التي ترغب باستخدامها: العربية أم الإنجليزية؟ Please select the language you want: Arabic or English");
     hasAskedForLanguage = true;
     if (recognition && !isListening) recognition.start();
-  }, 2000);
+  }, 6000);
 }
 
 function resetVisitorState() {
@@ -168,17 +170,19 @@ function initializeSpeechRecognition() {
   recognition.continuous = false;
   recognition.interimResults = false;
   recognition.lang = 'en-US';
-
+  
   recognition.onstart = () => {
     isListening = true;
     updateMicButton(true);
   };
-
+  
   recognition.onend = () => {
     isListening = false;
     updateMicButton(false);
     if (isFacePresent && (hasAskedForLanguage || hasAskedForQuestion)) {
-      setTimeout(() => recognition.start(), 1000);
+      setTimeout(() => {
+        if (!isListening) recognition.start();
+      }, 1000);
     }
   };
 
@@ -202,8 +206,8 @@ function initializeSpeechRecognition() {
       setTimeout(() => {
         speak(currentLanguage === 'ar' ? "ماذا تريد أن تعرف عن مزرعة 14؟" : "What do you want to know about Farm 14?");
         recognition.lang = currentLanguage === 'ar' ? 'ar-SA' : 'en-US';
-        recognition.start();
-      }, 2000);
+        if (!isListening) recognition.start();
+      }, 6000);
     } else {
       processUserQuery(transcript);
     }
@@ -392,8 +396,14 @@ function setupVoiceUnlock() {
 }
 
 function unlockVoice() {
-  voiceReady = true;
-  hideTapToBeginOverlay();
+  if (!voiceReady) {
+    voiceReady = true;
+    hideTapToBeginOverlay();
+    // Speech synthesis warm-up for mobile
+    const silentUtterance = new SpeechSynthesisUtterance(" ");
+    silentUtterance.lang = 'en-US';
+    speechSynthesis.speak(silentUtterance);
+  }
 }
 
 function showTapToBeginOverlay() {
