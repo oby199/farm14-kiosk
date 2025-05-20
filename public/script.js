@@ -77,6 +77,14 @@ async function init() {
   updateDateTime();
 }
 
+window.addEventListener('DOMContentLoaded', () => {
+  const overlay = document.getElementById('tap-to-begin-overlay');
+  if (overlay) {
+    overlay.addEventListener('click', unlockVoice, { once: true });
+    overlay.addEventListener('touchstart', unlockVoice, { once: true });
+  }
+});
+
 // ==== FACE DETECTION ====
 async function initializeFaceDetection() {
   if (faceDetectionInitialized) return;
