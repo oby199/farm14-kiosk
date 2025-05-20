@@ -1,7 +1,7 @@
 // ==== GLOBAL STATE ====
 let recognition;
 let currentLanguage = 'en';
-let isListening = false;
+let isRecognitionActive = false;
 let isFacePresent = false;
 let hasWelcomed = false;
 let hasAskedForLanguage = false;
@@ -154,13 +154,7 @@ function handleNewVisitor() {
   setTimeout(() => {
     speak("من فضلك اختر اللغة التي ترغب باستخدامها: العربية أم الإنجليزية؟ Please select the language you want: Arabic or English");
     hasAskedForLanguage = true;
-    if (recognition && !isListening) {
-      try {
-        recognition.start();
-      } catch (err) {
-        console.warn('SpeechRecognition already started or failed:', err);
-      }
-    }
+    startRecognitionSafely();
   }, 6000);
 }
 
@@ -169,7 +163,7 @@ function resetVisitorState() {
   hasWelcomed = false;
   hasAskedForLanguage = false;
   hasAskedForQuestion = false;
-  isListening = false;
+  isRecognitionActive = false;
   if (recognition) recognition.stop();
   if (speechSynthesisEngine) speechSynthesisEngine.cancel();
   updateMicButton(false);
@@ -185,35 +179,29 @@ function initializeSpeechRecognition() {
   recognition.lang = 'en-US';
   
   recognition.onstart = () => {
-    isListening = true;
+    isRecognitionActive = true;
     updateMicButton(true);
     document.body.classList.add('mic-pulsing');
-    console.log('[SpeechRecognition] Started');
+    console.log('[SpeechRecognition] Started ✅');
   };
   
   recognition.onend = () => {
-    isListening = false;
+    isRecognitionActive = false;
     updateMicButton(false);
     document.body.classList.remove('mic-pulsing');
-    console.log('[SpeechRecognition] Ended');
+    console.log('[SpeechRecognition] Ended ❎');
     if (isFacePresent && (hasAskedForLanguage || hasAskedForQuestion)) {
       setTimeout(() => {
-        if (!isListening) {
-          try {
-            recognition.start();
-          } catch (err) {
-            console.warn('SpeechRecognition already started or failed:', err);
-          }
-        }
+        startRecognitionSafely();
       }, 2000);
     }
   };
 
   recognition.onerror = (e) => {
-    isListening = false;
+    isRecognitionActive = false;
     updateMicButton(false);
     document.body.classList.remove('mic-pulsing');
-    console.error('[SpeechRecognition] Error:', e);
+    console.error('[SpeechRecognition] Error ❌:', e.error);
   };
 
   recognition.onresult = (e) => {
@@ -232,18 +220,27 @@ function initializeSpeechRecognition() {
       setTimeout(() => {
         speak(currentLanguage === 'ar' ? "ماذا تريد أن تعرف عن مزرعة 14؟" : "What do you want to know about Farm 14?");
         recognition.lang = currentLanguage === 'ar' ? 'ar-SA' : 'en-US';
-        if (!isListening) {
-          try {
-            recognition.start();
-          } catch (err) {
-            console.warn('SpeechRecognition already started or failed:', err);
-          }
+        if (!isRecognitionActive) {
+          startRecognitionSafely();
         }
       }, 6000);
     } else {
       processUserQuery(transcript);
     }
   };
+}
+
+function startRecognitionSafely() {
+  if (isRecognitionActive) {
+    console.warn('[SpeechRecognition] Attempted to start while active. Ignored. ⚠️');
+    return;
+  }
+
+  try {
+    recognition.start();
+  } catch (err) {
+    console.error('[SpeechRecognition] Failed to start:', err);
+  }
 }
 
 // ==== QUERY MATCHING ====
@@ -418,7 +415,10 @@ function updateEnvironmentData() {
 
 function setupEventListeners() {
   document.getElementById('micButton')?.addEventListener('click', () => {
-    if (!isListening) recognition?.start();
-    else recognition?.stop();
+    if (!isRecognitionActive) {
+      startRecognitionSafely();
+    } else {
+      recognition?.stop();
+    }
   });
 }
