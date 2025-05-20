@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Farm 14 Kiosk</title>
+  
+  <!-- Preload critical resources -->
+  <link rel="preload" href="script.js" as="script">
+  <link rel="preload" href="style.css" as="style">
+  <link rel="preload" href="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js" as="script">
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@700;900&display=swap" rel="stylesheet">
+  
+  <!-- Styles -->
+  <link rel="stylesheet" href="style.css" />
+  
+  <!-- Scripts -->
+  <script defer src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
+  <script defer src="script.js"></script>
+</head>
+<body>
+  <div class="palms left"></div>
+  <div class="palms right"></div>
+  <div class="container">
+  <header>
+      <img src="logo.png" alt="Farm 14 Logo" class="logo-img" onerror="this.style.display='none'">
+      <h1 class="farm-title"><span class="farm-green">Farm</span> <span class="farm-gold">14</span></h1>
+  </header>
+
+  <main>
+      <div id="cameraContainer">
+        <video id="video" autoplay muted></video>
+        <canvas id="overlay"></canvas>
+        <div class="scanning-text">Looking for a visitor...</div>
+      </div>
+      
+      <div class="controls">
+        <button id="micButton" disabled>🎤 Ask about Farm 14</button>
+        <select id="langSelect">
+          <option value="en">English</option>
+          <option value="ar">العربية</option>
+        </select>
+      </div>
+
+      <div class="answer-container">
+        <h3>Answer</h3>
+        <div id="answer" class="answer-box">--</div>
+      </div>
+
+      <section class="env-row" style="display: flex; justify-content: center; gap: 16px;">
+        <div class="env-box">
+          <span class="icon">🌡️</span>
+          <span class="label">Temperature:</span>
+          <span id="tempValue">27.5°C</span>
+          <span class="unit"></span>
+        </div>
+        <div class="env-box">
+          <span class="icon">💧</span>
+          <span class="label">Humidity:</span>
+          <span id="humidityValue">62%</span>
+          <span class="unit"></span>
+        </div>
+      </section>
+  </main>
+
+  <footer>
+    <p>© 2024 Farm 14 Kiosk</p>
+  </footer>
+  </div>
+</body>
+</html>
