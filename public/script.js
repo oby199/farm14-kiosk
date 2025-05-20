@@ -410,9 +410,16 @@ function setupEventListeners() {
 }
 
 function setupVoiceUnlock() {
-  ['click', 'touchstart', 'keydown'].forEach(event => {
-    window.addEventListener(event, unlockVoice, { once: true });
-    document.addEventListener(event, unlockVoice, { once: true });
+  ['click', 'touchstart', 'keydown'].forEach(evt => {
+    window.addEventListener(evt, () => {
+      console.log('[🟢] User tap detected – unlocking voice');
+      unlockVoice();
+    }, { once: true, passive: true });
+
+    document.addEventListener(evt, () => {
+      console.log('[🟢] Doc interaction – unlocking voice');
+      unlockVoice();
+    }, { once: true, passive: true });
   });
 }
 
