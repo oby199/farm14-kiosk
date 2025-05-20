@@ -102,6 +102,7 @@ async function initializeFaceDetection() {
 async function detectFace() {
   const canvas = document.getElementById('overlay');
   const cameraBox = document.getElementById('cameraBox');
+  const scanningText = document.querySelector('.scanning-text');
   const displaySize = {
     width: cameraBox?.offsetWidth || 640,
     height: cameraBox?.offsetHeight || 480
@@ -127,17 +128,17 @@ async function detectFace() {
       const box = d.box;
       ctx.strokeRect(box.x, box.y, box.width, box.height);
     });
-
+    if (scanningText) scanningText.style.visibility = 'hidden';
     if (!isFacePresent) {
       isFacePresent = true;
       handleNewVisitor();
     }
   } else {
+    if (scanningText) scanningText.style.visibility = 'visible';
     if (isFacePresent) {
       resetVisitorState();
     }
   }
-
   requestAnimationFrame(detectFace);
 }
 
@@ -399,8 +400,8 @@ function unlockVoice() {
   if (!voiceReady) {
     voiceReady = true;
     hideTapToBeginOverlay();
-    // Speech synthesis warm-up for mobile
-    const silentUtterance = new SpeechSynthesisUtterance(" ");
+    // Speech synthesis warm-up for mobile/iOS
+    const silentUtterance = new SpeechSynthesisUtterance("Hello");
     silentUtterance.lang = 'en-US';
     speechSynthesis.speak(silentUtterance);
   }
@@ -424,5 +425,6 @@ function showTapToBeginOverlay() {
 }
 
 function hideTapToBeginOverlay() {
-  document.getElementById('tap-to-begin-overlay')?.remove();
+  const overlay = document.getElementById('tap-to-begin-overlay');
+  if (overlay) overlay.remove();
 }
