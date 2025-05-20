@@ -708,3 +708,9 @@ body.mic-pulsing #micButton {
   0% { box-shadow: 0 0 0 0 #ff4444; }
   100% { box-shadow: 0 0 16px 8px #ff444488; }
 }
+
+/* Speaking state for mic button */
+body.speaking #micButton {
+  opacity: 0.7;
+  pointer-events: none;
+}

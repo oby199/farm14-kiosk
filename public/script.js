@@ -9,8 +9,28 @@ let hasAskedForQuestion = false;
 let isRecoveryInProgress = false;
 let faceDetectionInitialized = false;
 let speechSynthesisEngine = window.speechSynthesis;
-let voiceReady = true; // No overlay, always ready
+let voiceReady = false;
 let availableVoices = [];
+let selectedVoices = {
+  en: null,
+  ar: null
+};
+
+// ==== VOICE CONFIGURATION ====
+const voiceConfig = {
+  en: {
+    rate: 1.0,
+    pitch: 1.0,
+    volume: 1.0,
+    preferredNames: ['Google UK English Female', 'Microsoft David Desktop', 'Samantha']
+  },
+  ar: {
+    rate: 0.9,
+    pitch: 1.0,
+    volume: 1.0,
+    preferredNames: ['Google العربية', 'Microsoft Hoda Desktop', 'Tarik']
+  }
+};
 
 // ==== Q&A DATABASE ====
 const qaData = [
@@ -38,22 +58,26 @@ const qaData = [
 // ==== UI TRANSLATIONS ====
 const translations = {
   en: {
-    welcome: "Welcome to Farm 14",
+    welcome: "👋 Welcome to Farm 14",
     lookingForVisitor: "🔍 Looking for a visitor...",
     visitorDetected: "👋 Visitor detected!",
     askButton: "🎤 Ask about Farm 14",
     listening: "🎤 Listening...",
     answer: "Answer",
-    thinking: "Thinking..."
+    thinking: "Thinking...",
+    chooseLanguage: "🌐 Please choose a language: English or Arabic",
+    whatToKnow: "🔍 What do you want to know about our farm?"
   },
   ar: {
-    welcome: "مرحباً بك في مزرعة 14",
+    welcome: "👋 مرحباً بك في مزرعة 14",
     lookingForVisitor: "🔍 جاري البحث عن زائر...",
     visitorDetected: "👋 تم اكتشاف زائر!",
     askButton: "🎤 اسأل عن مزرعة 14",
     listening: "🎤 جاري الاستماع...",
     answer: "الإجابة",
-    thinking: "جاري التفكير..."
+    thinking: "جاري التفكير...",
+    chooseLanguage: "🌐 من فضلك اختر اللغة: العربية أم الإنجليزية",
+    whatToKnow: "🔍 ماذا تريد أن تعرف عن مزرعتنا؟"
   }
 };
 
@@ -150,12 +174,15 @@ async function detectFace() {
 
 // ==== VISITOR FLOW ====
 function handleNewVisitor() {
-  speak("مرحبًا بك في مزرعة 14. Welcome to Farm 14");
+  // Step 1: Welcome message
+  speak(translations.en.welcome);
+  
+  // Step 2: Ask for language choice after 3 seconds
   setTimeout(() => {
-    speak("من فضلك اختر اللغة التي ترغب باستخدامها: العربية أم الإنجليزية؟ Please select the language you want: Arabic or English");
+    speak(translations.en.chooseLanguage);
     hasAskedForLanguage = true;
     startRecognitionSafely();
-  }, 6000);
+  }, 3000);
 }
 
 function resetVisitorState() {
@@ -190,6 +217,8 @@ function initializeSpeechRecognition() {
     updateMicButton(false);
     document.body.classList.remove('mic-pulsing');
     console.log('[SpeechRecognition] Ended ❎');
+    
+    // Only auto-restart if we're still in the conversation flow
     if (isFacePresent && (hasAskedForLanguage || hasAskedForQuestion)) {
       setTimeout(() => {
         startRecognitionSafely();
@@ -202,29 +231,40 @@ function initializeSpeechRecognition() {
     updateMicButton(false);
     document.body.classList.remove('mic-pulsing');
     console.error('[SpeechRecognition] Error ❌:', e.error);
+    
+    // If we're still in conversation, try to recover
+    if (isFacePresent && (hasAskedForLanguage || hasAskedForQuestion)) {
+      setTimeout(() => {
+        startRecognitionSafely();
+      }, 2000);
+    }
   };
 
   recognition.onresult = (e) => {
     const transcript = e.results[0][0].transcript.toLowerCase();
-    console.log('[SpeechRecognition] onresult:', transcript);
+    console.log('[SpeechRecognition] Result:', transcript);
+    
     if (hasAskedForLanguage && !hasAskedForQuestion) {
+      // Handle language selection
       if (transcript.includes('arabic') || transcript.includes('العربية')) {
         currentLanguage = 'ar';
       } else if (transcript.includes('english') || transcript.includes('الإنجليزية')) {
         currentLanguage = 'en';
       } else {
-        speak("Please say Arabic or English");
+        // If language not recognized, ask again
+        speak(translations[currentLanguage].chooseLanguage);
         return;
       }
+      
+      // Language selected, now ask for question
       hasAskedForQuestion = true;
       setTimeout(() => {
-        speak(currentLanguage === 'ar' ? "ماذا تريد أن تعرف عن مزرعة 14؟" : "What do you want to know about Farm 14?");
+        speak(translations[currentLanguage].whatToKnow);
         recognition.lang = currentLanguage === 'ar' ? 'ar-SA' : 'en-US';
-        if (!isRecognitionActive) {
-          startRecognitionSafely();
-        }
-      }, 6000);
+        startRecognitionSafely();
+      }, 2000);
     } else {
+      // Handle the actual question
       processUserQuery(transcript);
     }
   };
@@ -356,33 +396,106 @@ function detectLanguage(text) {
 
 function speak(text) {
   console.log('[Speak] text:', text);
-  if (!voiceReady) return;
+  if (!voiceReady) {
+    console.warn('[Speak] Voices not ready yet');
+    return;
+  }
+
+  // Split text into sentences and language parts
   const parts = text.split(/[–.]/).filter(Boolean);
   let index = 0;
+
   const speakPart = () => {
     if (index >= parts.length) return;
-    const lang = /[\u0600-\u06FF]/.test(parts[index]) ? 'ar-SA' : 'en-US';
-    const utter = new SpeechSynthesisUtterance(parts[index].trim());
-    utter.lang = lang;
-    utter.voice = getBestVoice(lang);
-    utter.onend = () => speakPart(++index);
-    speechSynthesisEngine.cancel();
-    setTimeout(() => speechSynthesisEngine.speak(utter), 100);
-  };
-  speakPart();
-}
+    
+    const part = parts[index].trim();
+    const isArabic = /[\u0600-\u06FF]/.test(part);
+    const lang = isArabic ? 'ar' : 'en';
+    const config = voiceConfig[lang];
+    const voice = selectedVoices[lang];
+    
+    if (!voice) {
+      console.warn(`[Speak] No voice available for ${lang}`);
+      index++;
+      speakPart();
+      return;
+    }
 
-function getBestVoice(lang) {
-  return availableVoices.find(v => v.lang === lang && v.localService)
-    || availableVoices.find(v => v.lang === lang)
-    || availableVoices.find(v => v.lang.startsWith(lang.split('-')[0]));
+    const utter = new SpeechSynthesisUtterance(part);
+    utter.voice = voice;
+    utter.lang = isArabic ? 'ar-SA' : 'en-US';
+    utter.rate = config.rate;
+    utter.pitch = config.pitch;
+    utter.volume = config.volume;
+
+    // Add event listeners for better control
+    utter.onstart = () => {
+      console.log(`[Speak] Started speaking (${lang}):`, part);
+      document.body.classList.add('speaking');
+    };
+
+    utter.onend = () => {
+      console.log(`[Speak] Finished speaking (${lang}):`, part);
+      document.body.classList.remove('speaking');
+      index++;
+      speakPart();
+    };
+
+    utter.onerror = (event) => {
+      console.error('[Speak] Error:', event);
+      document.body.classList.remove('speaking');
+      index++;
+      speakPart();
+    };
+
+    // Cancel any ongoing speech
+    speechSynthesisEngine.cancel();
+    
+    // Small delay to ensure clean start
+    setTimeout(() => {
+      speechSynthesisEngine.speak(utter);
+    }, 100);
+  };
+
+  speakPart();
 }
 
 function loadVoices() {
   availableVoices = speechSynthesisEngine.getVoices();
-  if (availableVoices.length) voiceReady = true;
+  console.log('[Voices] Available voices:', availableVoices.length);
+  
+  // Select best voices for each language
+  selectedVoices.en = findBestVoice('en-US', voiceConfig.en.preferredNames);
+  selectedVoices.ar = findBestVoice('ar-SA', voiceConfig.ar.preferredNames);
+  
+  if (selectedVoices.en || selectedVoices.ar) {
+    voiceReady = true;
+    console.log('[Voices] Selected voices:', {
+      en: selectedVoices.en?.name,
+      ar: selectedVoices.ar?.name
+    });
+  }
 }
-speechSynthesisEngine.onvoiceschanged = loadVoices;
+
+function findBestVoice(lang, preferredNames) {
+  // First try preferred voices
+  for (const name of preferredNames) {
+    const voice = availableVoices.find(v => v.name === name);
+    if (voice) return voice;
+  }
+  
+  // Then try any voice with exact language match
+  const exactMatch = availableVoices.find(v => v.lang === lang && v.localService);
+  if (exactMatch) return exactMatch;
+  
+  // Then try any voice with language match
+  const langMatch = availableVoices.find(v => v.lang === lang);
+  if (langMatch) return langMatch;
+  
+  // Finally try any voice with language prefix match
+  const prefixMatch = availableVoices.find(v => v.lang.startsWith(lang.split('-')[0]));
+  return prefixMatch || null;
+}
 
 // ==== UI / MISC ====
 function updateMicButton(active) {
