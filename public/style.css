@@ -689,3 +689,22 @@ button,
   pointer-events: auto;
   cursor: pointer;
 }
+
+.thinking::after {
+  content: '...';
+  animation: ellipsis 1s steps(3, end) infinite;
+}
+@keyframes ellipsis {
+  0% { content: ''; }
+  33% { content: '.'; }
+  66% { content: '..'; }
+  100% { content: '...'; }
+}
+
+body.mic-pulsing #micButton {
+  animation: mic-pulse 1s infinite alternate;
+}
+@keyframes mic-pulse {
+  0% { box-shadow: 0 0 0 0 #ff4444; }
+  100% { box-shadow: 0 0 16px 8px #ff444488; }
+}

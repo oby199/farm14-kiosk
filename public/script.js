@@ -9,7 +9,7 @@ let hasAskedForQuestion = false;
 let isRecoveryInProgress = false;
 let faceDetectionInitialized = false;
 let speechSynthesisEngine = window.speechSynthesis;
-let voiceReady = false;
+let voiceReady = true; // No overlay, always ready
 let availableVoices = [];
 
 // ==== Q&A DATABASE ====
@@ -83,8 +83,16 @@ async function initializeFaceDetection() {
   const video = document.getElementById('video');
   if (!video) return;
 
-  const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-  video.srcObject = stream;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user' }
+    });
+    video.srcObject = stream;
+  } catch (err) {
+    console.error('Camera error:', err);
+    alert('Camera access failed. Please allow camera permissions.');
+    return;
+  }
 
   await new Promise((res) => {
     video.onloadedmetadata = () => {
@@ -179,11 +187,15 @@ function initializeSpeechRecognition() {
   recognition.onstart = () => {
     isListening = true;
     updateMicButton(true);
+    document.body.classList.add('mic-pulsing');
+    console.log('[SpeechRecognition] Started');
   };
   
   recognition.onend = () => {
     isListening = false;
     updateMicButton(false);
+    document.body.classList.remove('mic-pulsing');
+    console.log('[SpeechRecognition] Ended');
     if (isFacePresent && (hasAskedForLanguage || hasAskedForQuestion)) {
       setTimeout(() => {
         if (!isListening) {
@@ -197,13 +209,16 @@ function initializeSpeechRecognition() {
     }
   };
 
-  recognition.onerror = () => {
+  recognition.onerror = (e) => {
     isListening = false;
     updateMicButton(false);
+    document.body.classList.remove('mic-pulsing');
+    console.error('[SpeechRecognition] Error:', e);
   };
 
   recognition.onresult = (e) => {
     const transcript = e.results[0][0].transcript.toLowerCase();
+    console.log('[SpeechRecognition] onresult:', transcript);
     if (hasAskedForLanguage && !hasAskedForQuestion) {
       if (transcript.includes('arabic') || transcript.includes('العربية')) {
         currentLanguage = 'ar';
@@ -239,10 +254,10 @@ async function processUserQuery(query) {
     currentLanguage = detectedLang;
     const t = translations[detectedLang];
     
-    // Update answer box with thinking message
+    // Show loader/animated ellipsis
     const answerBox = document.getElementById('answer');
     if (answerBox) {
-      answerBox.textContent = t.thinking;
+      answerBox.innerHTML = '<span class="thinking">...</span>';
       answerBox.style.opacity = '0.7';
     }
 
@@ -343,6 +358,7 @@ function detectLanguage(text) {
 }
 
 function speak(text) {
+  console.log('[Speak] text:', text);
   if (!voiceReady) return;
   const parts = text.split(/[–.]/).filter(Boolean);
   let index = 0;
