@@ -614,4 +614,15 @@ function setupEventListeners() {
       recognition?.stop();
     }
   });
+
+  // Setup suggested questions click handlers
+  const suggestedQuestions = document.querySelectorAll('.suggested-questions li');
+  suggestedQuestions.forEach(question => {
+    question.addEventListener('click', () => {
+      const text = question.textContent.trim();
+      // Remove emoji from the text
+      const cleanText = text.replace(/[\u{1F300}-\u{1F9FF}]/gu, '').trim();
+      processUserQuery(cleanText);
+    });
+  });
 }

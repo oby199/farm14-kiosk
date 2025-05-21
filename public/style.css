@@ -760,3 +760,122 @@ body.speaking #micButton {
   opacity: 0.7;
   pointer-events: none;
 }
+
+.suggested-questions {
+  background: var(--box-bg);
+  border: 2px solid var(--border-gold);
+  border-radius: var(--border-radius);
+  padding: 16px 20px;
+  width: 280px;
+  max-width: 90%;
+  margin: 16px auto;
+  box-shadow: var(--shadow);
+  font-size: 0.95em;
+  color: var(--brown);
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: slideUp 0.5s ease-out;
+  position: relative;
+  overflow: hidden;
+}
+
+.suggested-questions::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(45deg, transparent, rgba(255,255,255,0.1), transparent);
+  transform: translateX(-100%);
+  transition: transform 0.6s;
+}
+
+.suggested-questions:hover::before {
+  transform: translateX(100%);
+}
+
+.suggested-questions h4 {
+  margin: 0 0 12px 0;
+  font-size: 1.1em;
+  color: var(--green);
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.suggested-questions ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 200px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-gold) transparent;
+}
+
+.suggested-questions ul::-webkit-scrollbar {
+  width: 6px;
+}
+
+.suggested-questions ul::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.suggested-questions ul::-webkit-scrollbar-thumb {
+  background-color: var(--border-gold);
+  border-radius: 3px;
+}
+
+.suggested-questions li {
+  margin: 10px 0;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: 8px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95em;
+  line-height: 1.4;
+}
+
+.suggested-questions li:hover {
+  background: rgba(255, 255, 255, 0.8);
+  transform: translateX(4px);
+}
+
+.suggested-questions li:active {
+  transform: scale(var(--touch-scale));
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Mobile-specific styles */
+@media (max-width: 600px) {
+  .suggested-questions {
+    width: 90%;
+    padding: 14px 16px;
+    margin: 12px auto;
+  }
+
+  .suggested-questions li {
+    padding: 10px;
+    margin: 8px 0;
+    min-height: var(--touch-target-size);
+  }
+
+  .suggested-questions h4 {
+    font-size: 1em;
+  }
+}
