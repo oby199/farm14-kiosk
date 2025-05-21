@@ -15,6 +15,8 @@ let selectedVoices = {
   en: null,
   ar: null
 };
+let voiceDetectionRetries = 0;
+const MAX_VOICE_RETRIES = 3;
 
 // ==== VOICE CONFIGURATION ====
 const voiceConfig = {
@@ -85,18 +87,28 @@ const translations = {
 document.addEventListener('DOMContentLoaded', init);
 
 async function init() {
-  loadVoices();
-
-  await initializeFaceDetection();
-  initializeSpeechRecognition();
-  setupEventListeners();
-  updateUIText();
-
-  setInterval(updateDateTime, 1000);
-  setInterval(updateEnvironmentData, 30000);
-
-  updateEnvironmentData();
-  updateDateTime();
+  // Handle tap to begin overlay
+  const tapOverlay = document.getElementById('tap-to-begin-overlay');
+  if (tapOverlay) {
+    tapOverlay.addEventListener('click', async () => {
+      tapOverlay.style.display = 'none';
+      
+      // Initialize all components after tap
+      await loadVoices();
+      await initializeFaceDetection();
+      initializeSpeechRecognition();
+      setupEventListeners();
+      updateUIText();
+      
+      // Start periodic updates
+      setInterval(updateDateTime, 1000);
+      setInterval(updateEnvironmentData, 30000);
+      
+      // Initial updates
+      updateEnvironmentData();
+      updateDateTime();
+    });
+  }
 }
 
 // ==== FACE DETECTION ====
@@ -161,6 +173,8 @@ async function detectFace() {
     if (scanningText) scanningText.style.visibility = 'hidden';
     if (!isFacePresent) {
       isFacePresent = true;
+      // Reset voice detection retries when new face is detected
+      voiceDetectionRetries = 0;
       handleNewVisitor();
     }
   } else {
@@ -220,9 +234,20 @@ function initializeSpeechRecognition() {
     
     // Only auto-restart if we're still in the conversation flow
     if (isFacePresent && (hasAskedForLanguage || hasAskedForQuestion)) {
-      setTimeout(() => {
-        startRecognitionSafely();
-      }, 2000);
+      if (voiceDetectionRetries < MAX_VOICE_RETRIES) {
+        voiceDetectionRetries++;
+        console.log(`[SpeechRecognition] Retry attempt ${voiceDetectionRetries} of ${MAX_VOICE_RETRIES}`);
+        setTimeout(() => {
+          startRecognitionSafely();
+        }, 2000);
+      } else {
+        console.log('[SpeechRecognition] Max retries reached, waiting for face detection');
+        voiceDetectionRetries = 0;
+        // Stop speaking and wait for new face detection
+        if (speechSynthesisEngine) {
+          speechSynthesisEngine.cancel();
+        }
+      }
     }
   };
 
@@ -234,15 +259,29 @@ function initializeSpeechRecognition() {
     
     // If we're still in conversation, try to recover
     if (isFacePresent && (hasAskedForLanguage || hasAskedForQuestion)) {
-      setTimeout(() => {
-        startRecognitionSafely();
-      }, 2000);
+      if (voiceDetectionRetries < MAX_VOICE_RETRIES) {
+        voiceDetectionRetries++;
+        console.log(`[SpeechRecognition] Retry attempt ${voiceDetectionRetries} of ${MAX_VOICE_RETRIES}`);
+        setTimeout(() => {
+          startRecognitionSafely();
+        }, 2000);
+      } else {
+        console.log('[SpeechRecognition] Max retries reached, waiting for face detection');
+        voiceDetectionRetries = 0;
+        // Stop speaking and wait for new face detection
+        if (speechSynthesisEngine) {
+          speechSynthesisEngine.cancel();
+        }
+      }
     }
   };
 
   recognition.onresult = (e) => {
     const transcript = e.results[0][0].transcript.toLowerCase();
     console.log('[SpeechRecognition] Result:', transcript);
+    
+    // Reset retry counter on successful voice detection
+    voiceDetectionRetries = 0;
     
     if (hasAskedForLanguage && !hasAskedForQuestion) {
       // Handle language selection
