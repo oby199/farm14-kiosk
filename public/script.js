@@ -17,20 +17,21 @@ let selectedVoices = {
 };
 let voiceDetectionRetries = 0;
 const MAX_VOICE_RETRIES = 3;
+let isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
 // ==== VOICE CONFIGURATION ====
 const voiceConfig = {
   en: {
-    rate: 1.0,
-    pitch: 1.0,
+    rate: isMobileDevice ? 0.9 : 1.0,
+    pitch: isMobileDevice ? 0.9 : 1.0,
     volume: 1.0,
-    preferredNames: ['Google UK English Female', 'Microsoft David Desktop', 'Samantha']
+    preferredNames: ['Google UK English Female', 'Microsoft David Desktop', 'Samantha', 'Karen', 'Daniel']
   },
   ar: {
-    rate: 0.9,
-    pitch: 1.0,
+    rate: isMobileDevice ? 0.8 : 0.9,
+    pitch: isMobileDevice ? 0.9 : 1.0,
     volume: 1.0,
-    preferredNames: ['Google العربية', 'Microsoft Hoda Desktop', 'Tarik']
+    preferredNames: ['Google العربية', 'Microsoft Hoda Desktop', 'Tarik', 'Laila', 'Amira']
   }
 };
 
@@ -492,7 +493,27 @@ function speak(text) {
     
     // Small delay to ensure clean start
     setTimeout(() => {
-      speechSynthesisEngine.speak(utter);
+      try {
+        speechSynthesisEngine.speak(utter);
+        // Force resume on mobile devices
+        if (isMobileDevice) {
+          speechSynthesisEngine.resume();
+        }
+      } catch (error) {
+        console.error('[Speak] Error starting speech:', error);
+        // Try fallback voice if available
+        if (utter.voice) {
+          utter.voice = null; // Use default voice
+          try {
+            speechSynthesisEngine.speak(utter);
+            if (isMobileDevice) {
+              speechSynthesisEngine.resume();
+            }
+          } catch (fallbackError) {
+            console.error('[Speak] Fallback voice also failed:', fallbackError);
+          }
+        }
+      }
     }, 100);
   };
 
@@ -500,19 +521,39 @@ function speak(text) {
 }
 
 function loadVoices() {
-  availableVoices = speechSynthesisEngine.getVoices();
-  console.log('[Voices] Available voices:', availableVoices.length);
-  
-  // Select best voices for each language
-  selectedVoices.en = findBestVoice('en-US', voiceConfig.en.preferredNames);
-  selectedVoices.ar = findBestVoice('ar-SA', voiceConfig.ar.preferredNames);
-  
-  if (selectedVoices.en || selectedVoices.ar) {
-    voiceReady = true;
-    console.log('[Voices] Selected voices:', {
-      en: selectedVoices.en?.name,
-      ar: selectedVoices.ar?.name
+  // Handle Chrome's async voice loading
+  if (speechSynthesisEngine.getVoices().length === 0) {
+    speechSynthesisEngine.addEventListener('voiceschanged', () => {
+      availableVoices = speechSynthesisEngine.getVoices();
+      console.log('[Voices] Available voices:', availableVoices.length);
+      
+      // Select best voices for each language
+      selectedVoices.en = findBestVoice('en-US', voiceConfig.en.preferredNames);
+      selectedVoices.ar = findBestVoice('ar-SA', voiceConfig.ar.preferredNames);
+      
+      if (selectedVoices.en || selectedVoices.ar) {
+        voiceReady = true;
+        console.log('[Voices] Selected voices:', {
+          en: selectedVoices.en?.name,
+          ar: selectedVoices.ar?.name
+        });
+      }
     });
+  } else {
+    availableVoices = speechSynthesisEngine.getVoices();
+    console.log('[Voices] Available voices:', availableVoices.length);
+    
+    // Select best voices for each language
+    selectedVoices.en = findBestVoice('en-US', voiceConfig.en.preferredNames);
+    selectedVoices.ar = findBestVoice('ar-SA', voiceConfig.ar.preferredNames);
+    
+    if (selectedVoices.en || selectedVoices.ar) {
+      voiceReady = true;
+      console.log('[Voices] Selected voices:', {
+        en: selectedVoices.en?.name,
+        ar: selectedVoices.ar?.name
+      });
+    }
   }
 }
 
