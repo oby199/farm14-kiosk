@@ -19,6 +19,49 @@ let voiceDetectionRetries = 0;
 const MAX_VOICE_RETRIES = 3;
 let isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
+// ==== ROTATING QUESTIONS ====
+const rotatingQuestions = [
+  "What crops do you grow?",
+  "What's the farm's history?",
+  "ما هي المحاصيل المزروعة؟",
+  "متى تأسست المزرعة؟"
+];
+
+let currentQuestionIndex = 0;
+let questionRotationInterval;
+
+function startQuestionRotation() {
+  const questionContainer = document.querySelector('.question-container');
+  const questionText = document.querySelector('.question-text');
+  
+  if (!questionContainer || !questionText) return;
+
+  function updateQuestion() {
+    // Fade out
+    questionContainer.classList.remove('visible');
+    
+    // Wait for fade out, then update and fade in
+    setTimeout(() => {
+      questionText.textContent = rotatingQuestions[currentQuestionIndex];
+      currentQuestionIndex = (currentQuestionIndex + 1) % rotatingQuestions.length;
+      questionContainer.classList.add('visible');
+    }, 500);
+  }
+
+  // Initial question
+  questionText.textContent = rotatingQuestions[0];
+  questionContainer.classList.add('visible');
+
+  // Start rotation
+  questionRotationInterval = setInterval(updateQuestion, 5000);
+}
+
+function stopQuestionRotation() {
+  if (questionRotationInterval) {
+    clearInterval(questionRotationInterval);
+  }
+}
+
 // ==== VOICE CONFIGURATION ====
 const voiceConfig = {
   en: {
@@ -100,6 +143,7 @@ async function init() {
       initializeSpeechRecognition();
       setupEventListeners();
       updateUIText();
+      startQuestionRotation(); // Start rotating questions
       
       // Start periodic updates
       setInterval(updateDateTime, 1000);
@@ -615,14 +659,14 @@ function setupEventListeners() {
     }
   });
 
-  // Setup suggested questions click handlers
-  const suggestedQuestions = document.querySelectorAll('.suggested-questions li');
-  suggestedQuestions.forEach(question => {
-    question.addEventListener('click', () => {
-      const text = question.textContent.trim();
-      // Remove emoji from the text
-      const cleanText = text.replace(/[\u{1F300}-\u{1F9FF}]/gu, '').trim();
-      processUserQuery(cleanText);
+  // Make rotating questions clickable
+  const questionContainer = document.querySelector('.question-container');
+  if (questionContainer) {
+    questionContainer.addEventListener('click', () => {
+      const questionText = document.querySelector('.question-text');
+      if (questionText) {
+        processUserQuery(questionText.textContent);
+      }
     });
-  });
+  }
 }

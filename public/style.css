@@ -879,3 +879,57 @@ body.speaking #micButton {
     font-size: 1em;
   }
 }
+
+.rotating-questions {
+  background: var(--box-bg);
+  border: 1px solid var(--border-gold);
+  border-radius: 16px;
+  padding: 12px 16px;
+  width: 280px;
+  max-width: 90%;
+  margin: 12px auto;
+  box-shadow: var(--shadow);
+  position: relative;
+  overflow: hidden;
+  min-height: 24px;
+}
+
+.question-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 0.5s ease, transform 0.5s ease;
+}
+
+.question-container.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.question-icon {
+  font-size: 1.2em;
+  color: var(--gold);
+}
+
+.question-text {
+  font-size: 0.95em;
+  color: var(--brown);
+  line-height: 1.4;
+  flex: 1;
+  text-align: left;
+}
+
+/* Mobile-specific styles */
+@media (max-width: 600px) {
+  .rotating-questions {
+    width: 90%;
+    padding: 10px 14px;
+    margin: 10px auto;
+  }
+
+  .question-text {
+    font-size: 0.9em;
+  }
+}
