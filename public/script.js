@@ -24,7 +24,19 @@ const rotatingQuestions = [
   "What crops do you grow?",
   "What's the farm's history?",
   "ما هي المحاصيل المزروعة؟",
-  "متى تأسست المزرعة؟"
+  "متى تأسست المزرعة؟",
+  "How do you grow your crops?",
+  "What makes Farm 14 special?",
+  "كيف تزرعون المحاصيل؟",
+  "ما الذي يميز مزرعة 14؟",
+  "Are your crops organic?",
+  "What's the best time to visit?",
+  "هل المحاصيل عضوية؟",
+  "ما هو أفضل وقت للزيارة؟",
+  "How big is the farm?",
+  "What's your farming method?",
+  "ما هي مساحة المزرعة؟",
+  "ما هي طريقة الزراعة المستخدمة؟"
 ];
 
 let currentQuestionIndex = 0;
@@ -81,16 +93,55 @@ const voiceConfig = {
 // ==== Q&A DATABASE ====
 const qaData = [
   {
-    questions: ["ما هي المحاصيل المزروعة", "شو المحاصيل المزروعة", "ما هي أنواع المحاصيل", "شو تزرعون"],
+    questions: ["ما هي المحاصيل المزروعة", "شو المحاصيل المزروعة", "ما هي أنواع المحاصيل", "شو تزرعون", "ما هي المحاصيل المزروعة؟"],
     answer: "تزرع المزرعة 14 مجموعة متنوعة من المحاصيل تشمل الخضروات والفواكه. من أهم المحاصيل: الطماطم، الخيار، الفلفل، الباذنجان، والفراولة. كما نزرع أيضاً الأعشاب الطبية مثل النعناع والريحان."
   },
   {
-    questions: ["what crops is it", "what crops do you grow", "what do you grow", "which crops", "crops"],
-    answer: "Farm 14 grows a variety of crops including tomatoes, cucumbers, peppers, eggplants, strawberries, and medicinal herbs such as mint and basil."
+    questions: ["what crops is it", "what crops do you grow", "what do you grow", "which crops", "crops", "how do you grow your crops"],
+    answer: "Farm 14 grows a variety of crops including tomatoes, cucumbers, peppers, eggplants, strawberries, and medicinal herbs such as mint and basil. We use sustainable farming methods and focus on quality over quantity."
   },
   {
-    questions: ["ما هو تاريخ المزرعة", "شو هوه تاريخ المزرعة", "متى تأسست المزرعة"],
-    answer: "تأسست مزرعتنا في عام 2005 في منطقة ليوا. دعني أخبرك المزيد عن رحلتنا…"
+    questions: ["ما هو تاريخ المزرعة", "شو هوه تاريخ المزرعة", "متى تأسست المزرعة", "متى تأسست المزرعة؟"],
+    answer: "تأسست مزرعتنا في عام 2005 في منطقة ليوا. بدأنا بمشروع صغير وتمكنا من التوسع تدريجياً حتى أصبحت من أكبر المزارع في المنطقة. نحن نفتخر بتاريخنا وتراثنا الزراعي."
+  },
+  {
+    questions: ["what's the farm's history", "farm history", "when was the farm established", "how old is the farm"],
+    answer: "Farm 14 was established in 2005 in the Liwa region. We started as a small project and gradually expanded to become one of the largest farms in the area. We take pride in our agricultural heritage and sustainable farming practices."
+  },
+  {
+    questions: ["what makes farm 14 special", "what's special about farm 14", "why is farm 14 unique", "ما الذي يميز مزرعة 14؟"],
+    answer: {
+      en: "Farm 14 is special because we combine traditional farming wisdom with modern sustainable practices. We focus on organic methods, water conservation, and maintaining biodiversity. Our commitment to quality and environmental responsibility sets us apart.",
+      ar: "تتميز مزرعة 14 بجمعها بين الحكمة الزراعية التقليدية والممارسات المستدامة الحديثة. نركز على الأساليب العضوية، وترشيد استهلاك المياه، والحفاظ على التنوع البيولوجي. التزامنا بالجودة والمسؤولية البيئية هو ما يميزنا."
+    }
+  },
+  {
+    questions: ["are your crops organic", "is it organic", "هل المحاصيل عضوية؟", "هل تستخدمون الزراعة العضوية"],
+    answer: {
+      en: "Yes, we practice organic farming methods. We avoid synthetic pesticides and fertilizers, focusing instead on natural pest control and organic soil enrichment. Our crops are grown with care for both quality and environmental sustainability.",
+      ar: "نعم، نستخدم أساليب الزراعة العضوية. نتجنب المبيدات والأسمدة الاصطناعية، وبدلاً من ذلك نركز على مكافحة الآفات الطبيعية وإثراء التربة العضوية. يتم زراعة محاصيلنا بعناية من حيث الجودة والاستدامة البيئية."
+    }
+  },
+  {
+    questions: ["what's the best time to visit", "when should i visit", "best time to visit", "ما هو أفضل وقت للزيارة؟"],
+    answer: {
+      en: "The best time to visit Farm 14 is during the cooler months from October to April. During this period, you can see our crops at their best, and the weather is perfect for a farm tour. We're open daily from 8 AM to 6 PM.",
+      ar: "أفضل وقت لزيارة مزرعة 14 هو خلال الأشهر الباردة من أكتوبر إلى أبريل. خلال هذه الفترة، يمكنك رؤية محاصيلنا في أفضل حالاتها، والطقس مثالي لجولة في المزرعة. نحن مفتوحون يومياً من الساعة 8 صباحاً حتى 6 مساءً."
+    }
+  },
+  {
+    questions: ["how big is the farm", "farm size", "what's the farm's size", "ما هي مساحة المزرعة؟"],
+    answer: {
+      en: "Farm 14 spans over 50 acres of cultivated land. We have dedicated sections for different types of crops, greenhouses for year-round production, and a visitor center. Our size allows us to maintain diverse crops while ensuring quality control.",
+      ar: "تمتد مزرعة 14 على مساحة تزيد عن 50 فدان من الأراضي المزروعة. لدينا أقسام مخصصة لأنواع مختلفة من المحاصيل، وبيوت بلاستيكية للإنتاج على مدار العام، ومركز للزوار. حجمنا يسمح لنا بالحفاظ على تنوع المحاصيل مع ضمان مراقبة الجودة."
+    }
+  },
+  {
+    questions: ["what's your farming method", "how do you farm", "farming techniques", "ما هي طريقة الزراعة المستخدمة؟"],
+    answer: {
+      en: "We use a combination of traditional and modern sustainable farming methods. This includes crop rotation, natural pest control, drip irrigation, and soil conservation techniques. We focus on maintaining soil health and biodiversity while maximizing water efficiency.",
+      ar: "نستخدم مزيجاً من الطرق الزراعية التقليدية والحديثة المستدامة. وهذا يشمل تناوب المحاصيل، ومكافحة الآفات الطبيعية، والري بالتنقيط، وتقنيات الحفاظ على التربة. نركز على الحفاظ على صحة التربة والتنوع البيولوجي مع تعظيم كفاءة استخدام المياه."
+    }
   },
   {
     questions: ["شكرا", "شكراً", "شكرا جزيلا", "شكراً جزيلاً", "thank you", "thanks", "thank you very much"],
