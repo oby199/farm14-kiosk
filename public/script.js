@@ -19,6 +19,19 @@ let voiceDetectionRetries = 0;
 const MAX_VOICE_RETRIES = 3;
 let isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
 
+// Speech queue management
+let speechQueue = [];
+let isSpeaking = false;
+
+// Voice detection configuration
+const VOICE_CONFIG = {
+  confidenceThreshold: 0.7,
+  minWordsForConfidence: 2,
+  maxRetries: 3,
+  retryDelay: 2000,
+  recoveryDelay: 1000
+};
+
 // ==== ROTATING QUESTIONS ====
 const rotatingQuestions = [
   "What crops do you grow?",
@@ -287,12 +300,13 @@ function handleNewVisitor() {
   // Step 1: Welcome message
   speak(translations.en.welcome);
   
-  // Step 2: Ask for language choice after 3 seconds
+  // Step 2: Ask for language choice after appropriate delay
+  const welcomeDelay = calculateDelay(translations.en.welcome, 'en');
   setTimeout(() => {
     speak(translations.en.chooseLanguage);
     hasAskedForLanguage = true;
     startRecognitionSafely();
-  }, 3000);
+  }, welcomeDelay);
 }
 
 function resetVisitorState() {
@@ -302,7 +316,7 @@ function resetVisitorState() {
   hasAskedForQuestion = false;
   isRecognitionActive = false;
   if (recognition) recognition.stop();
-  if (speechSynthesisEngine) speechSynthesisEngine.cancel();
+  clearSpeechQueue();
   updateMicButton(false);
   document.querySelector('.scanning-text').textContent = translations[currentLanguage].lookingForVisitor;
 }
@@ -328,21 +342,17 @@ function initializeSpeechRecognition() {
     document.body.classList.remove('mic-pulsing');
     console.log('[SpeechRecognition] Ended ❎');
     
-    // Only auto-restart if we're still in the conversation flow
-    if (isFacePresent && (hasAskedForLanguage || hasAskedForQuestion)) {
-      if (voiceDetectionRetries < MAX_VOICE_RETRIES) {
+    // Only auto-restart if we're still in the conversation flow and not speaking
+    if (isFacePresent && (hasAskedForLanguage || hasAskedForQuestion) && !isSpeaking) {
+      if (voiceDetectionRetries < VOICE_CONFIG.maxRetries) {
         voiceDetectionRetries++;
-        console.log(`[SpeechRecognition] Retry attempt ${voiceDetectionRetries} of ${MAX_VOICE_RETRIES}`);
+        console.log(`[SpeechRecognition] Retry attempt ${voiceDetectionRetries} of ${VOICE_CONFIG.maxRetries}`);
         setTimeout(() => {
           startRecognitionSafely();
-        }, 2000);
+        }, VOICE_CONFIG.retryDelay);
       } else {
         console.log('[SpeechRecognition] Max retries reached, waiting for face detection');
         voiceDetectionRetries = 0;
-        // Stop speaking and wait for new face detection
-        if (speechSynthesisEngine) {
-          speechSynthesisEngine.cancel();
-        }
       }
     }
   };
@@ -353,51 +363,80 @@ function initializeSpeechRecognition() {
     document.body.classList.remove('mic-pulsing');
     console.error('[SpeechRecognition] Error ❌:', e.error);
     
-    // If we're still in conversation, try to recover
-    if (isFacePresent && (hasAskedForLanguage || hasAskedForQuestion)) {
-      if (voiceDetectionRetries < MAX_VOICE_RETRIES) {
+    // Handle specific error types
+    switch (e.error) {
+      case 'no-speech':
+        console.log('[SpeechRecognition] No speech detected, retrying...');
+        break;
+      case 'audio-capture':
+        console.error('[SpeechRecognition] Audio capture failed');
+        break;
+      case 'network':
+        console.error('[SpeechRecognition] Network error');
+        break;
+      default:
+        console.error('[SpeechRecognition] Unknown error:', e.error);
+    }
+    
+    // If we're still in conversation and not speaking, try to recover
+    if (isFacePresent && (hasAskedForLanguage || hasAskedForQuestion) && !isSpeaking) {
+      if (voiceDetectionRetries < VOICE_CONFIG.maxRetries) {
         voiceDetectionRetries++;
-        console.log(`[SpeechRecognition] Retry attempt ${voiceDetectionRetries} of ${MAX_VOICE_RETRIES}`);
+        console.log(`[SpeechRecognition] Retry attempt ${voiceDetectionRetries} of ${VOICE_CONFIG.maxRetries}`);
         setTimeout(() => {
           startRecognitionSafely();
-        }, 2000);
+        }, VOICE_CONFIG.retryDelay);
       } else {
         console.log('[SpeechRecognition] Max retries reached, waiting for face detection');
         voiceDetectionRetries = 0;
-        // Stop speaking and wait for new face detection
-        if (speechSynthesisEngine) {
-          speechSynthesisEngine.cancel();
-        }
       }
     }
   };
 
   recognition.onresult = (e) => {
-    const transcript = e.results[0][0].transcript.toLowerCase();
-    console.log('[SpeechRecognition] Result:', transcript);
+    const result = e.results[0][0];
+    const transcript = result.transcript.toLowerCase();
+    const confidence = result.confidence;
+    
+    console.log('[SpeechRecognition] Result:', {
+      transcript,
+      confidence,
+      isFinal: e.results[0].isFinal
+    });
+    
+    // Check confidence threshold
+    if (confidence < VOICE_CONFIG.confidenceThreshold) {
+      console.warn(`[SpeechRecognition] Low confidence (${confidence}), ignoring result`);
+      return;
+    }
+    
+    // Check minimum word count for confidence
+    const wordCount = transcript.trim().split(/\s+/).length;
+    if (wordCount < VOICE_CONFIG.minWordsForConfidence) {
+      console.warn(`[SpeechRecognition] Too few words (${wordCount}), ignoring result`);
+      return;
+    }
     
     // Reset retry counter on successful voice detection
     voiceDetectionRetries = 0;
     
     if (hasAskedForLanguage && !hasAskedForQuestion) {
-      // Handle language selection
-      if (transcript.includes('arabic') || transcript.includes('العربية')) {
-        currentLanguage = 'ar';
-      } else if (transcript.includes('english') || transcript.includes('الإنجليزية')) {
-        currentLanguage = 'en';
+      // Handle language selection with confidence check
+      const languageSelection = detectLanguageSelection(transcript);
+      if (languageSelection) {
+        currentLanguage = languageSelection;
+        // Language selected, now ask for question after appropriate delay
+        hasAskedForQuestion = true;
+        const languageDelay = calculateDelay(translations[currentLanguage].chooseLanguage, currentLanguage);
+        setTimeout(() => {
+          speak(translations[currentLanguage].whatToKnow);
+          recognition.lang = currentLanguage === 'ar' ? 'ar-SA' : 'en-US';
+          startRecognitionSafely();
+        }, languageDelay);
       } else {
         // If language not recognized, ask again
         speak(translations[currentLanguage].chooseLanguage);
-        return;
       }
-      
-      // Language selected, now ask for question
-      hasAskedForQuestion = true;
-      setTimeout(() => {
-        speak(translations[currentLanguage].whatToKnow);
-        recognition.lang = currentLanguage === 'ar' ? 'ar-SA' : 'en-US';
-        startRecognitionSafely();
-      }, 2000);
     } else {
       // Handle the actual question
       processUserQuery(transcript);
@@ -406,15 +445,33 @@ function initializeSpeechRecognition() {
 }
 
 function startRecognitionSafely() {
-  if (isRecognitionActive) {
-    console.warn('[SpeechRecognition] Attempted to start while active. Ignored. ⚠️');
+  if (isRecognitionActive || isSpeaking) {
+    console.warn('[SpeechRecognition] Attempted to start while active or speaking. Ignored. ⚠️');
     return;
   }
 
   try {
     recognition.start();
+    isRecognitionActive = true;
+    console.log('[SpeechRecognition] Started safely ✅');
   } catch (err) {
     console.error('[SpeechRecognition] Failed to start:', err);
+    isRecognitionActive = false;
+  }
+}
+
+function stopRecognitionSafely() {
+  if (!isRecognitionActive) {
+    console.warn('[SpeechRecognition] Attempted to stop while inactive. Ignored. ⚠️');
+    return;
+  }
+
+  try {
+    recognition.stop();
+    isRecognitionActive = false;
+    console.log('[SpeechRecognition] Stopped safely ✅');
+  } catch (err) {
+    console.error('[SpeechRecognition] Failed to stop:', err);
   }
 }
 
@@ -456,13 +513,8 @@ async function processUserQuery(query) {
       
       // After speaking the answer, reset for next visitor
       setTimeout(() => {
-        isFacePresent = false;
-        hasWelcomed = false;
-        const micButton = document.getElementById('micButton');
-        if (micButton) micButton.disabled = true;
-        const scanningText = document.querySelector('.scanning-text');
-        if (scanningText) scanningText.textContent = 'Looking for a visitor...';
-      }, 5000);
+        resetVisitorState();
+      }, calculateDelay(response, detectedLang));
       return;
     }
 
@@ -474,23 +526,22 @@ async function processUserQuery(query) {
     );
     
     if (qa) {
+      const response = typeof qa.answer === 'object' ? 
+        qa.answer[detectedLang] : 
+        qa.answer;
+      
       // Update answer box with response
       if (answerBox) {
-        answerBox.textContent = qa.answer;
+        answerBox.textContent = response;
         answerBox.style.opacity = '1';
       }
       
-      speak(qa.answer, detectedLang);
+      speak(response, detectedLang);
       
       // After speaking the answer, reset for next visitor
       setTimeout(() => {
-        isFacePresent = false;
-        hasWelcomed = false;
-        const micButton = document.getElementById('micButton');
-        if (micButton) micButton.disabled = true;
-        const scanningText = document.querySelector('.scanning-text');
-        if (scanningText) scanningText.textContent = 'Looking for a visitor...';
-      }, 5000);
+        resetVisitorState();
+      }, calculateDelay(response, detectedLang));
     } else {
       const fallback = detectedLang === 'ar'
         ? 'عذراً، لم أفهم سؤالك. يرجى المحاولة مرة أخرى.'
@@ -506,13 +557,8 @@ async function processUserQuery(query) {
       
       // After speaking the answer, reset for next visitor
       setTimeout(() => {
-        isFacePresent = false;
-        hasWelcomed = false;
-        const micButton = document.getElementById('micButton');
-        if (micButton) micButton.disabled = true;
-        const scanningText = document.querySelector('.scanning-text');
-        if (scanningText) scanningText.textContent = 'Looking for a visitor...';
-      }, 5000);
+        resetVisitorState();
+      }, calculateDelay(fallback, detectedLang));
     }
   } catch (error) {
     console.error('Error processing query:', error);
@@ -529,8 +575,21 @@ function detectLanguage(text) {
   return /[\u0600-\u06FF]/.test(text) ? 'ar' : 'en';
 }
 
+// Calculate appropriate delay based on message length and language
+function calculateDelay(text, lang) {
+  // Average speaking rate (words per minute)
+  const wordsPerMinute = lang === 'ar' ? 120 : 150;
+  
+  // Count words (rough estimation)
+  const words = text.trim().split(/\s+/).length;
+  
+  // Calculate time in milliseconds (add 1 second buffer)
+  const baseTime = (words / wordsPerMinute) * 60 * 1000;
+  return Math.max(baseTime + 1000, 2000); // Minimum 2 seconds delay
+}
+
 function speak(text) {
-  console.log('[Speak] text:', text);
+  console.log('[Speak] Adding to queue:', text);
   if (!voiceReady) {
     console.warn('[Speak] Voices not ready yet');
     return;
@@ -538,81 +597,109 @@ function speak(text) {
 
   // Split text into sentences and language parts
   const parts = text.split(/[–.]/).filter(Boolean);
-  let index = 0;
-
-  const speakPart = () => {
-    if (index >= parts.length) return;
-    
-    const part = parts[index].trim();
-    const isArabic = /[\u0600-\u06FF]/.test(part);
-    const lang = isArabic ? 'ar' : 'en';
-    const config = voiceConfig[lang];
-    const voice = selectedVoices[lang];
-    
-    if (!voice) {
-      console.warn(`[Speak] No voice available for ${lang}`);
-      index++;
-      speakPart();
-      return;
+  
+  // Add each part to the queue
+  parts.forEach(part => {
+    const trimmedPart = part.trim();
+    if (trimmedPart) {
+      speechQueue.push(trimmedPart);
     }
+  });
 
-    const utter = new SpeechSynthesisUtterance(part);
-    utter.voice = voice;
-    utter.lang = isArabic ? 'ar-SA' : 'en-US';
-    utter.rate = config.rate;
-    utter.pitch = config.pitch;
-    utter.volume = config.volume;
+  // Start processing queue if not already speaking
+  if (!isSpeaking) {
+    processSpeechQueue();
+  }
+}
 
-    // Add event listeners for better control
-    utter.onstart = () => {
-      console.log(`[Speak] Started speaking (${lang}):`, part);
-      document.body.classList.add('speaking');
-    };
+function processSpeechQueue() {
+  if (speechQueue.length === 0) {
+    isSpeaking = false;
+    // If we're in a conversation flow, restart recognition after speech
+    if (isFacePresent && (hasAskedForLanguage || hasAskedForQuestion)) {
+      setTimeout(() => {
+        startRecognitionSafely();
+      }, 1000); // Give user a moment to process the speech
+    }
+    return;
+  }
 
-    utter.onend = () => {
-      console.log(`[Speak] Finished speaking (${lang}):`, part);
-      document.body.classList.remove('speaking');
-      index++;
-      speakPart();
-    };
+  isSpeaking = true;
+  // Stop recognition while speaking
+  if (isRecognitionActive) {
+    stopRecognitionSafely();
+  }
 
-    utter.onerror = (event) => {
-      console.error('[Speak] Error:', event);
-      document.body.classList.remove('speaking');
-      index++;
-      speakPart();
-    };
+  const part = speechQueue.shift();
+  const isArabic = /[\u0600-\u06FF]/.test(part);
+  const lang = isArabic ? 'ar' : 'en';
+  const config = voiceConfig[lang];
+  const voice = selectedVoices[lang];
 
-    // Cancel any ongoing speech
-    speechSynthesisEngine.cancel();
-    
-    // Small delay to ensure clean start
-    setTimeout(() => {
+  if (!voice) {
+    console.warn(`[Speak] No voice available for ${lang}`);
+    processSpeechQueue(); // Skip to next part
+    return;
+  }
+
+  const utter = new SpeechSynthesisUtterance(part);
+  utter.voice = voice;
+  utter.lang = isArabic ? 'ar-SA' : 'en-US';
+  utter.rate = config.rate;
+  utter.pitch = config.pitch;
+  utter.volume = config.volume;
+
+  utter.onstart = () => {
+    console.log(`[Speak] Started speaking (${lang}):`, part);
+    document.body.classList.add('speaking');
+  };
+
+  utter.onend = () => {
+    console.log(`[Speak] Finished speaking (${lang}):`, part);
+    document.body.classList.remove('speaking');
+    // Process next part in queue
+    setTimeout(processSpeechQueue, 100); // Small delay between parts
+  };
+
+  utter.onerror = (event) => {
+    console.error('[Speak] Error:', event);
+    document.body.classList.remove('speaking');
+    // Process next part in queue even on error
+    setTimeout(processSpeechQueue, 100);
+  };
+
+  try {
+    speechSynthesisEngine.speak(utter);
+    // Force resume on mobile devices
+    if (isMobileDevice) {
+      speechSynthesisEngine.resume();
+    }
+  } catch (error) {
+    console.error('[Speak] Error starting speech:', error);
+    // Try fallback voice if available
+    if (utter.voice) {
+      utter.voice = null; // Use default voice
       try {
         speechSynthesisEngine.speak(utter);
-        // Force resume on mobile devices
         if (isMobileDevice) {
           speechSynthesisEngine.resume();
         }
-      } catch (error) {
-        console.error('[Speak] Error starting speech:', error);
-        // Try fallback voice if available
-        if (utter.voice) {
-          utter.voice = null; // Use default voice
-          try {
-            speechSynthesisEngine.speak(utter);
-            if (isMobileDevice) {
-              speechSynthesisEngine.resume();
-            }
-          } catch (fallbackError) {
-            console.error('[Speak] Fallback voice also failed:', fallbackError);
-          }
-        }
+      } catch (fallbackError) {
+        console.error('[Speak] Fallback voice also failed:', fallbackError);
+        // Continue with next part even if fallback fails
+        setTimeout(processSpeechQueue, 100);
       }
-    }, 100);
-  };
+    }
+  }
+}
 
-  speakPart();
+// Add a function to clear the speech queue if needed
+function clearSpeechQueue() {
+  speechQueue = [];
+  if (speechSynthesisEngine) {
+    speechSynthesisEngine.cancel();
+  }
+  isSpeaking = false;
 }
 
 function loadVoices() {
@@ -706,7 +793,7 @@ function setupEventListeners() {
     if (!isRecognitionActive) {
       startRecognitionSafely();
     } else {
-      recognition?.stop();
+      stopRecognitionSafely();
     }
   });
 
@@ -720,4 +807,17 @@ function setupEventListeners() {
       }
     });
   }
+}
+
+// Helper function to detect language selection with confidence
+function detectLanguageSelection(transcript) {
+  const arabicKeywords = ['arabic', 'العربية'];
+  const englishKeywords = ['english', 'الإنجليزية'];
+  
+  const hasArabic = arabicKeywords.some(keyword => transcript.includes(keyword));
+  const hasEnglish = englishKeywords.some(keyword => transcript.includes(keyword));
+  
+  if (hasArabic && !hasEnglish) return 'ar';
+  if (hasEnglish && !hasArabic) return 'en';
+  return null; // Ambiguous or no clear selection
 }
