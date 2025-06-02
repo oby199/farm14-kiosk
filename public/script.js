@@ -22,14 +22,41 @@ let isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera M
 // Speech queue management
 let speechQueue = [];
 let isSpeaking = false;
+let speechTimeout = null;
 
 // Voice detection configuration
 const VOICE_CONFIG = {
-  confidenceThreshold: 0.7,
-  minWordsForConfidence: 2,
+  confidenceThreshold: 0.1,
+  minWordsForConfidence: 1,
+  maxRetries: 2,
+  retryDelay: 1500,
+  recoveryDelay: 1000,
+  speechDelay: 800, // Delay between speech segments
+  recognitionDelay: 1200 // Delay before starting recognition after speech
+};
+
+// Update mobile-specific speech synthesis configuration
+const MOBILE_SPEECH_CONFIG = {
   maxRetries: 3,
-  retryDelay: 2000,
-  recoveryDelay: 1000
+  retryDelay: 1000,
+  checkInterval: 2000,
+  resumeInterval: 500,
+  forceResumeAttempts: 2,
+  maxQueueSize: 5,
+  recoveryTimeout: 5000,
+  voiceLoadTimeout: 3000
+};
+
+// Enhanced mobile speech synthesis state tracking
+let mobileSpeechState = {
+  isPaused: false,
+  retryCount: 0,
+  lastResumeAttempt: 0,
+  forceResumeCount: 0,
+  lastError: null,
+  recoveryInProgress: false,
+  voiceLoadAttempts: 0,
+  lastVoiceCheck: 0
 };
 
 // ==== ROTATING QUESTIONS ====
@@ -168,26 +195,26 @@ const qaData = [
 // ==== UI TRANSLATIONS ====
 const translations = {
   en: {
-    welcome: "👋 Welcome to Farm 14",
-    lookingForVisitor: "🔍 Looking for a visitor...",
-    visitorDetected: "👋 Visitor detected!",
-    askButton: "🎤 Ask about Farm 14",
-    listening: "🎤 Listening...",
+    welcome: "Welcome to Farm 14",
+    lookingForVisitor: "Looking for a visitor...",
+    visitorDetected: "Visitor detected!",
+    askButton: "Ask about Farm 14",
+    listening: "Listening...",
     answer: "Answer",
     thinking: "Thinking...",
-    chooseLanguage: "🌐 Please choose a language: English or Arabic",
-    whatToKnow: "🔍 What do you want to know about our farm?"
+    chooseLanguage: "Please choose a language: English or Arabic",
+    whatToKnow: "What do you want to know about our farm?"
   },
   ar: {
-    welcome: "👋 مرحباً بك في مزرعة 14",
-    lookingForVisitor: "🔍 جاري البحث عن زائر...",
-    visitorDetected: "👋 تم اكتشاف زائر!",
-    askButton: "🎤 اسأل عن مزرعة 14",
-    listening: "🎤 جاري الاستماع...",
+    welcome: "مرحباً بك في مزرعة 14",
+    lookingForVisitor: "جاري البحث عن زائر...",
+    visitorDetected: "تم اكتشاف زائر!",
+    askButton: "اسأل عن مزرعة 14",
+    listening: "جاري الاستماع...",
     answer: "الإجابة",
     thinking: "جاري التفكير...",
-    chooseLanguage: "🌐 من فضلك اختر اللغة: العربية أم الإنجليزية",
-    whatToKnow: "🔍 ماذا تريد أن تعرف عن مزرعتنا؟"
+    chooseLanguage: "من فضلك اختر اللغة: العربية أم الإنجليزية",
+    whatToKnow: "ماذا تريد أن تعرف عن مزرعتنا؟"
   }
 };
 
@@ -302,10 +329,15 @@ function handleNewVisitor() {
   
   // Step 2: Ask for language choice after appropriate delay
   const welcomeDelay = calculateDelay(translations.en.welcome, 'en');
-  setTimeout(() => {
+  speechTimeout = setTimeout(() => {
     speak(translations.en.chooseLanguage);
     hasAskedForLanguage = true;
-    startRecognitionSafely();
+    // Add a delay after speech synthesis before starting recognition
+    speechTimeout = setTimeout(() => {
+      if (!isRecognitionActive && !isSpeaking) {
+        startRecognitionSafely();
+      }
+    }, VOICE_CONFIG.recognitionDelay);
   }, welcomeDelay);
 }
 
@@ -325,8 +357,9 @@ function resetVisitorState() {
 function initializeSpeechRecognition() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   recognition = new SpeechRecognition();
-  recognition.continuous = false;
-  recognition.interimResults = false;
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.maxAlternatives = 3;
   recognition.lang = 'en-US';
   
   recognition.onstart = () => {
@@ -354,6 +387,93 @@ function initializeSpeechRecognition() {
         console.log('[SpeechRecognition] Max retries reached, waiting for face detection');
         voiceDetectionRetries = 0;
       }
+    }
+  };
+
+  recognition.onresult = (e) => {
+    // Get the most confident result
+    let bestResult = null;
+    let bestConfidence = 0;
+
+    // Update live transcript with interim results
+    const liveTranscript = document.getElementById('live-transcript');
+    if (liveTranscript) {
+      const interimTranscript = Array.from(e.results)
+        .filter(result => !result.isFinal)
+        .map(result => result[0].transcript)
+        .join('');
+      
+      if (interimTranscript) {
+        liveTranscript.textContent = interimTranscript;
+      }
+    }
+
+    for (let i = 0; i < e.results.length; i++) {
+      const result = e.results[i];
+      if (result.isFinal) {
+        for (let j = 0; j < result.length; j++) {
+          if (result[j].confidence > bestConfidence) {
+            bestResult = result[j];
+            bestConfidence = result[j].confidence;
+          }
+        }
+      }
+    }
+
+    if (!bestResult) {
+      console.log('[SpeechRecognition] No final results yet');
+      return;
+    }
+
+    const transcript = bestResult.transcript.trim();
+    const confidence = bestResult.confidence;
+    
+    // 🔍 Log the transcript live on screen
+    const transcriptDisplay = document.getElementById('live-transcript');
+    if (transcriptDisplay) {
+      transcriptDisplay.textContent = `"${transcript}" (conf: ${confidence.toFixed(2)})`;
+    }
+    
+    console.log('[SpeechRecognition] Result:', {
+      transcript,
+      confidence,
+      isFinal: true
+    });
+    
+    // Process any result with confidence above threshold
+    if (confidence >= VOICE_CONFIG.confidenceThreshold) {
+      // Reset retry counter on any result
+      voiceDetectionRetries = 0;
+      
+      if (hasAskedForLanguage && !hasAskedForQuestion) {
+        // Handle language selection with confidence check
+        const languageSelection = detectLanguageSelection(transcript);
+        console.log('[LanguageDetection] Raw:', transcript);
+        console.log('[LanguageDetection] Detected:', languageSelection);
+        
+        if (languageSelection) {
+          currentLanguage = languageSelection;
+          hasAskedForQuestion = true;
+
+          const languageDelay = calculateDelay(translations[currentLanguage].chooseLanguage, currentLanguage);
+          setTimeout(() => {
+            speak(translations[currentLanguage].whatToKnow);
+            recognition.lang = currentLanguage === 'ar' ? 'ar-SA' : 'en-US';
+            startRecognitionSafely();
+          }, languageDelay);
+        } else {
+          // Language not detected — retry prompt
+          speak(translations[currentLanguage].chooseLanguage);
+          setTimeout(() => {
+            startRecognitionSafely(); // Restart listening again
+          }, calculateDelay(translations[currentLanguage].chooseLanguage, currentLanguage));
+        }
+      } else {
+        // Handle the actual question
+        processUserQuery(transcript);
+      }
+    } else {
+      console.log(`[SpeechRecognition] Low confidence (${confidence}), waiting for better result`);
     }
   };
 
@@ -392,61 +512,16 @@ function initializeSpeechRecognition() {
       }
     }
   };
-
-  recognition.onresult = (e) => {
-    const result = e.results[0][0];
-    const transcript = result.transcript.toLowerCase();
-    const confidence = result.confidence;
-    
-    console.log('[SpeechRecognition] Result:', {
-      transcript,
-      confidence,
-      isFinal: e.results[0].isFinal
-    });
-    
-    // Check confidence threshold
-    if (confidence < VOICE_CONFIG.confidenceThreshold) {
-      console.warn(`[SpeechRecognition] Low confidence (${confidence}), ignoring result`);
-      return;
-    }
-    
-    // Check minimum word count for confidence
-    const wordCount = transcript.trim().split(/\s+/).length;
-    if (wordCount < VOICE_CONFIG.minWordsForConfidence) {
-      console.warn(`[SpeechRecognition] Too few words (${wordCount}), ignoring result`);
-      return;
-    }
-    
-    // Reset retry counter on successful voice detection
-    voiceDetectionRetries = 0;
-    
-    if (hasAskedForLanguage && !hasAskedForQuestion) {
-      // Handle language selection with confidence check
-      const languageSelection = detectLanguageSelection(transcript);
-      if (languageSelection) {
-        currentLanguage = languageSelection;
-        // Language selected, now ask for question after appropriate delay
-        hasAskedForQuestion = true;
-        const languageDelay = calculateDelay(translations[currentLanguage].chooseLanguage, currentLanguage);
-        setTimeout(() => {
-          speak(translations[currentLanguage].whatToKnow);
-          recognition.lang = currentLanguage === 'ar' ? 'ar-SA' : 'en-US';
-          startRecognitionSafely();
-        }, languageDelay);
-      } else {
-        // If language not recognized, ask again
-        speak(translations[currentLanguage].chooseLanguage);
-      }
-    } else {
-      // Handle the actual question
-      processUserQuery(transcript);
-    }
-  };
 }
 
 function startRecognitionSafely() {
-  if (isRecognitionActive || isSpeaking) {
-    console.warn('[SpeechRecognition] Attempted to start while active or speaking. Ignored. ⚠️');
+  if (isRecognitionActive) {
+    console.log('[SpeechRecognition] Already active, skipping start');
+    return;
+  }
+
+  if (isSpeaking) {
+    console.log('[SpeechRecognition] Speaking in progress, will start after speech');
     return;
   }
 
@@ -572,7 +647,9 @@ async function processUserQuery(query) {
 
 // ==== HELPERS ====
 function detectLanguage(text) {
-  return /[\u0600-\u06FF]/.test(text) ? 'ar' : 'en';
+  // Check for Arabic characters with a more comprehensive range
+  const arabicPattern = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/;
+  return arabicPattern.test(text) ? 'ar' : 'en';
 }
 
 // Calculate appropriate delay based on message length and language
@@ -595,6 +672,11 @@ function speak(text) {
     return;
   }
 
+  // Clear any existing speech timeout
+  if (speechTimeout) {
+    clearTimeout(speechTimeout);
+  }
+
   // Split text into sentences and language parts
   const parts = text.split(/[–.]/).filter(Boolean);
   
@@ -615,19 +697,42 @@ function speak(text) {
 function processSpeechQueue() {
   if (speechQueue.length === 0) {
     isSpeaking = false;
-    // If we're in a conversation flow, restart recognition after speech
+    // Enhanced mobile speech state reset
+    mobileSpeechState = {
+      isPaused: false,
+      retryCount: 0,
+      lastResumeAttempt: 0,
+      forceResumeCount: 0,
+      lastError: null,
+      recoveryInProgress: false,
+      voiceLoadAttempts: 0,
+      lastVoiceCheck: Date.now()
+    };
+    
     if (isFacePresent && (hasAskedForLanguage || hasAskedForQuestion)) {
-      setTimeout(() => {
-        startRecognitionSafely();
-      }, 1000); // Give user a moment to process the speech
+      speechTimeout = setTimeout(() => {
+        if (!isRecognitionActive && !isSpeaking) {
+          startRecognitionSafely();
+        }
+      }, VOICE_CONFIG.recognitionDelay);
     }
     return;
   }
 
+  // Check queue size for mobile devices
+  if (isMobileDevice && speechQueue.length > MOBILE_SPEECH_CONFIG.maxQueueSize) {
+    console.warn('[MobileSpeech] Queue too large, trimming...');
+    speechQueue = speechQueue.slice(0, MOBILE_SPEECH_CONFIG.maxQueueSize);
+  }
+
   isSpeaking = true;
-  // Stop recognition while speaking
   if (isRecognitionActive) {
-    stopRecognitionSafely();
+    try {
+      recognition.stop();
+      isRecognitionActive = false;
+    } catch (err) {
+      console.error('[SpeechRecognition] Error stopping recognition:', err);
+    }
   }
 
   const part = speechQueue.shift();
@@ -638,7 +743,10 @@ function processSpeechQueue() {
 
   if (!voice) {
     console.warn(`[Speak] No voice available for ${lang}`);
-    processSpeechQueue(); // Skip to next part
+    if (isMobileDevice) {
+      handleMobileVoiceLoadFailure(lang);
+    }
+    processSpeechQueue();
     return;
   }
 
@@ -649,93 +757,267 @@ function processSpeechQueue() {
   utter.pitch = config.pitch;
   utter.volume = config.volume;
 
+  // Enhanced mobile device handling
+  if (isMobileDevice) {
+    setupMobileSpeechHandling(utter, part, lang);
+  }
+
   utter.onstart = () => {
     console.log(`[Speak] Started speaking (${lang}):`, part);
     document.body.classList.add('speaking');
+    if (isMobileDevice) {
+      mobileSpeechState.isPaused = false;
+      mobileSpeechState.retryCount = 0;
+      mobileSpeechState.lastError = null;
+    }
   };
 
   utter.onend = () => {
     console.log(`[Speak] Finished speaking (${lang}):`, part);
     document.body.classList.remove('speaking');
-    // Process next part in queue
-    setTimeout(processSpeechQueue, 100); // Small delay between parts
+    if (isMobileDevice) {
+      clearInterval(resumeCheckInterval);
+      // Reset error state on successful completion
+      mobileSpeechState.lastError = null;
+    }
+    speechTimeout = setTimeout(() => {
+      processSpeechQueue();
+    }, VOICE_CONFIG.speechDelay);
   };
 
   utter.onerror = (event) => {
     console.error('[Speak] Error:', event);
     document.body.classList.remove('speaking');
-    // Process next part in queue even on error
-    setTimeout(processSpeechQueue, 100);
+    if (isMobileDevice) {
+      clearInterval(resumeCheckInterval);
+      mobileSpeechState.lastError = event;
+      if (mobileSpeechState.forceResumeCount < MOBILE_SPEECH_CONFIG.forceResumeAttempts) {
+        handleMobileSpeechError(event);
+      }
+    }
+    speechTimeout = setTimeout(() => {
+      processSpeechQueue();
+    }, VOICE_CONFIG.speechDelay);
   };
 
   try {
     speechSynthesisEngine.speak(utter);
-    // Force resume on mobile devices
     if (isMobileDevice) {
-      speechSynthesisEngine.resume();
+      ensureMobileSpeechStart(utter);
     }
   } catch (error) {
     console.error('[Speak] Error starting speech:', error);
-    // Try fallback voice if available
     if (utter.voice) {
-      utter.voice = null; // Use default voice
-      try {
-        speechSynthesisEngine.speak(utter);
-        if (isMobileDevice) {
-          speechSynthesisEngine.resume();
-        }
-      } catch (fallbackError) {
-        console.error('[Speak] Fallback voice also failed:', fallbackError);
-        // Continue with next part even if fallback fails
-        setTimeout(processSpeechQueue, 100);
-      }
+      handleFallbackVoice(utter, error);
     }
   }
 }
 
-// Add a function to clear the speech queue if needed
+// New function to handle mobile voice load failures
+function handleMobileVoiceLoadFailure(lang) {
+  console.warn(`[MobileSpeech] Voice load failure for ${lang}`);
+  mobileSpeechState.voiceLoadAttempts++;
+  
+  if (mobileSpeechState.voiceLoadAttempts <= 3) {
+    setTimeout(() => {
+      loadVoices();
+    }, MOBILE_SPEECH_CONFIG.voiceLoadTimeout);
+  } else {
+    console.error('[MobileSpeech] Max voice load attempts reached');
+    // Fall back to default voice
+    selectedVoices[lang] = null;
+  }
+}
+
+// New function to handle mobile speech errors
+function handleMobileSpeechError(error) {
+  console.error('[MobileSpeech] Handling speech error:', error);
+  
+  if (mobileSpeechState.recoveryInProgress) {
+    console.log('[MobileSpeech] Recovery already in progress');
+    return;
+  }
+  
+  mobileSpeechState.recoveryInProgress = true;
+  
+  // Attempt recovery based on error type
+  switch (error.error) {
+    case 'interrupted':
+    case 'canceled':
+      forceMobileSpeechRecovery();
+      break;
+    case 'network':
+      // Wait longer for network issues
+      setTimeout(forceMobileSpeechRecovery, MOBILE_SPEECH_CONFIG.recoveryTimeout);
+      break;
+    default:
+      forceMobileSpeechRecovery();
+  }
+}
+
+// New function to ensure mobile speech starts
+function ensureMobileSpeechStart(utter) {
+  let startAttempts = 0;
+  const maxStartAttempts = 3;
+  
+  const checkStart = () => {
+    if (speechSynthesisEngine.speaking) {
+      console.log('[MobileSpeech] Speech started successfully');
+      return;
+    }
+    
+    startAttempts++;
+    if (startAttempts <= maxStartAttempts) {
+      console.log(`[MobileSpeech] Attempting to start speech (${startAttempts}/${maxStartAttempts})`);
+      speechSynthesisEngine.speak(utter);
+      setTimeout(checkStart, MOBILE_SPEECH_CONFIG.resumeInterval);
+    } else {
+      console.error('[MobileSpeech] Failed to start speech after multiple attempts');
+      processSpeechQueue();
+    }
+  };
+  
+  setTimeout(checkStart, MOBILE_SPEECH_CONFIG.resumeInterval);
+}
+
+// New function to handle fallback voice
+function handleFallbackVoice(utter, originalError) {
+  console.log('[MobileSpeech] Attempting fallback voice');
+  utter.voice = null; // Use default voice
+  
+  try {
+    speechSynthesisEngine.speak(utter);
+    if (isMobileDevice) {
+      ensureMobileSpeechStart(utter);
+    }
+  } catch (fallbackError) {
+    console.error('[MobileSpeech] Fallback voice also failed:', fallbackError);
+    speechTimeout = setTimeout(() => {
+      processSpeechQueue();
+    }, VOICE_CONFIG.speechDelay);
+  }
+}
+
+// Enhanced mobile speech recovery function
+function forceMobileSpeechRecovery() {
+  console.log('[MobileSpeech] Starting forced recovery');
+  mobileSpeechState.forceResumeCount++;
+  mobileSpeechState.recoveryInProgress = true;
+  
+  // Cancel all current speech
+  speechSynthesisEngine.cancel();
+  
+  // Clear any existing timeouts
+  if (speechTimeout) {
+    clearTimeout(speechTimeout);
+  }
+  
+  // Reset speech synthesis with enhanced error handling
+  try {
+    speechSynthesisEngine.pause();
+    
+    setTimeout(() => {
+      try {
+        speechSynthesisEngine.resume();
+        mobileSpeechState.lastResumeAttempt = Date.now();
+        
+        // If still paused after resume, try one more time
+        setTimeout(() => {
+          if (speechSynthesisEngine.paused) {
+            console.log('[MobileSpeech] Final resume attempt');
+            try {
+              speechSynthesisEngine.resume();
+            } catch (error) {
+              console.error('[MobileSpeech] Final resume attempt failed:', error);
+            }
+          }
+          
+          // Reset recovery state
+          mobileSpeechState.recoveryInProgress = false;
+          
+          // Continue with next part in queue
+          processSpeechQueue();
+        }, MOBILE_SPEECH_CONFIG.resumeInterval);
+      } catch (error) {
+        console.error('[MobileSpeech] Resume failed:', error);
+        mobileSpeechState.recoveryInProgress = false;
+        processSpeechQueue();
+      }
+    }, MOBILE_SPEECH_CONFIG.retryDelay);
+  } catch (error) {
+    console.error('[MobileSpeech] Recovery failed:', error);
+    mobileSpeechState.recoveryInProgress = false;
+    processSpeechQueue();
+  }
+}
+
 function clearSpeechQueue() {
+  // Clear any existing intervals
+  if (isMobileDevice) {
+    speechQueue.forEach(part => {
+      if (part._resumeCheckInterval) {
+        clearInterval(part._resumeCheckInterval);
+      }
+    });
+  }
+  
   speechQueue = [];
+  if (speechTimeout) {
+    clearTimeout(speechTimeout);
+  }
   if (speechSynthesisEngine) {
     speechSynthesisEngine.cancel();
   }
   isSpeaking = false;
+  
+  // Reset mobile state
+  if (isMobileDevice) {
+    mobileSpeechState = {
+      isPaused: false,
+      retryCount: 0,
+      lastResumeAttempt: 0,
+      forceResumeCount: 0,
+      lastError: null,
+      recoveryInProgress: false,
+      voiceLoadAttempts: 0,
+      lastVoiceCheck: Date.now()
+    };
+  }
 }
 
 function loadVoices() {
   // Handle Chrome's async voice loading
   if (speechSynthesisEngine.getVoices().length === 0) {
     speechSynthesisEngine.addEventListener('voiceschanged', () => {
-      availableVoices = speechSynthesisEngine.getVoices();
-      console.log('[Voices] Available voices:', availableVoices.length);
-      
-      // Select best voices for each language
-      selectedVoices.en = findBestVoice('en-US', voiceConfig.en.preferredNames);
-      selectedVoices.ar = findBestVoice('ar-SA', voiceConfig.ar.preferredNames);
-      
-      if (selectedVoices.en || selectedVoices.ar) {
-        voiceReady = true;
-        console.log('[Voices] Selected voices:', {
-          en: selectedVoices.en?.name,
-          ar: selectedVoices.ar?.name
-        });
-      }
+      handleVoicesLoaded();
     });
   } else {
-    availableVoices = speechSynthesisEngine.getVoices();
-    console.log('[Voices] Available voices:', availableVoices.length);
+    handleVoicesLoaded();
+  }
+}
+
+function handleVoicesLoaded() {
+  availableVoices = speechSynthesisEngine.getVoices();
+  console.log('[Voices] Available voices:', availableVoices.length);
+  
+  // Select best voices for each language
+  selectedVoices.en = findBestVoice('en-US', voiceConfig.en.preferredNames);
+  selectedVoices.ar = findBestVoice('ar-SA', voiceConfig.ar.preferredNames);
+  
+  if (selectedVoices.en || selectedVoices.ar) {
+    voiceReady = true;
+    console.log('[Voices] Selected voices:', {
+      en: selectedVoices.en?.name,
+      ar: selectedVoices.ar?.name
+    });
     
-    // Select best voices for each language
-    selectedVoices.en = findBestVoice('en-US', voiceConfig.en.preferredNames);
-    selectedVoices.ar = findBestVoice('ar-SA', voiceConfig.ar.preferredNames);
-    
-    if (selectedVoices.en || selectedVoices.ar) {
-      voiceReady = true;
-      console.log('[Voices] Selected voices:', {
-        en: selectedVoices.en?.name,
-        ar: selectedVoices.ar?.name
-      });
+    // Reset mobile voice load attempts on successful load
+    if (isMobileDevice) {
+      mobileSpeechState.voiceLoadAttempts = 0;
     }
+  } else if (isMobileDevice) {
+    // Handle voice loading failure on mobile
+    handleMobileVoiceLoadFailure('en'); // Try English first
   }
 }
 
@@ -810,14 +1092,89 @@ function setupEventListeners() {
 }
 
 // Helper function to detect language selection with confidence
-function detectLanguageSelection(transcript) {
-  const arabicKeywords = ['arabic', 'العربية'];
-  const englishKeywords = ['english', 'الإنجليزية'];
-  
-  const hasArabic = arabicKeywords.some(keyword => transcript.includes(keyword));
-  const hasEnglish = englishKeywords.some(keyword => transcript.includes(keyword));
-  
+function detectLanguageSelection(transcriptRaw) {
+  const transcript = transcriptRaw.toLowerCase().trim();
+
+  const arabicKeywords = [
+    'arabic', 'العربية', 'عربي', 'عربية', 'بالعربي', 'بالعربية'
+  ];
+  const englishKeywords = [
+    'english', 'الإنجليزية', 'انجليزي', 'انجليزية', 'بالانجليزي', 'بالانجليزية'
+  ];
+
+  const cleanTranscript = transcript.replace(/[^\p{L}\p{N}\s]/gu, ''); // Remove punctuation
+  const words = cleanTranscript.split(/\s+/); // Split into words
+
+  const hasArabic = words.some(word =>
+    arabicKeywords.some(keyword => word.includes(keyword))
+  );
+
+  const hasEnglish = words.some(word =>
+    englishKeywords.some(keyword => word.includes(keyword))
+  );
+
   if (hasArabic && !hasEnglish) return 'ar';
   if (hasEnglish && !hasArabic) return 'en';
-  return null; // Ambiguous or no clear selection
+
+  // Fallback: detect Arabic characters
+  if (/[\u0600-\u06FF]/.test(transcript)) return 'ar';
+
+  return null;
+}
+
+// Add new function for mobile speech handling setup
+function setupMobileSpeechHandling(utter, part, lang) {
+  // Set up periodic resume check for mobile devices
+  const resumeCheckInterval = setInterval(() => {
+    if (speechSynthesisEngine.paused) {
+      console.log('[MobileSpeech] Detected pause, attempting resume');
+      mobileSpeechState.isPaused = true;
+      mobileSpeechState.retryCount++;
+      
+      if (mobileSpeechState.retryCount <= MOBILE_SPEECH_CONFIG.maxRetries) {
+        try {
+          speechSynthesisEngine.resume();
+          mobileSpeechState.lastResumeAttempt = Date.now();
+        } catch (error) {
+          console.error('[MobileSpeech] Resume attempt failed:', error);
+          clearInterval(resumeCheckInterval);
+          handleMobileSpeechError(error);
+        }
+      } else {
+        console.warn('[MobileSpeech] Max retries reached, forcing recovery');
+        clearInterval(resumeCheckInterval);
+        forceMobileSpeechRecovery();
+      }
+    }
+  }, MOBILE_SPEECH_CONFIG.checkInterval);
+
+  // Force initial resume after a short delay
+  setTimeout(() => {
+    if (speechSynthesisEngine.paused) {
+      console.log('[MobileSpeech] Forcing initial resume');
+      try {
+        speechSynthesisEngine.resume();
+        mobileSpeechState.lastResumeAttempt = Date.now();
+      } catch (error) {
+        console.error('[MobileSpeech] Initial resume failed:', error);
+        clearInterval(resumeCheckInterval);
+        handleMobileSpeechError(error);
+      }
+    }
+  }, MOBILE_SPEECH_CONFIG.resumeInterval);
+
+  // Add mobile-specific event handlers
+  utter.onboundary = (event) => {
+    if (isMobileDevice && event.name === 'word') {
+      // Check if speech is still active
+      if (!speechSynthesisEngine.speaking) {
+        console.log('[MobileSpeech] Speech stopped unexpectedly');
+        clearInterval(resumeCheckInterval);
+        handleMobileSpeechError({ error: 'interrupted' });
+      }
+    }
+  };
+
+  // Store interval ID for cleanup
+  utter._resumeCheckInterval = resumeCheckInterval;
 }

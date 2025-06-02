@@ -23,12 +23,9 @@
   <script defer src="script.js"></script>
 </head>
 <body>
-  <div id="tap-to-begin-overlay">
-    <div class="tap-content">
-      <h2>Tap to Begin</h2>
-      <h3>انقر للبدء</h3>
-      <div class="tap-icon">👆</div>
-    </div>
+  <div class="tap-to-begin-overlay" id="tap-to-begin-overlay">
+    <h3>انقر للبدء</h3>
+    <div class="tap-icon">Tap to Begin</div>
   </div>
   <div class="palms left"></div>
   <div class="palms right"></div>
@@ -46,7 +43,7 @@
       </div>
       
       <div class="controls">
-        <button id="micButton" disabled>🎤 Ask about Farm 14</button>
+        <button id="micButton" disabled>Ask about Farm 14</button>
         <select id="langSelect">
           <option value="en">English</option>
           <option value="ar">العربية</option>
@@ -55,7 +52,6 @@
 
       <div class="rotating-questions">
         <div class="question-container">
-          <span class="question-icon">💭</span>
           <span class="question-text"></span>
         </div>
       </div>
@@ -65,25 +61,34 @@
         <div id="answer" class="answer-box">--</div>
       </div>
 
-      <section class="env-row" style="display: flex; justify-content: center; gap: 16px;">
+      <div class="suggested-questions">
+        <h4><span class="question-icon">Suggested Questions</span></h4>
+        <ul>
+          <li>What crops do you grow?</li>
+          <li>What's the farm's history?</li>
+          <li>How do you grow your crops?</li>
+        </ul>
+      </div>
+
+      <div class="environment">
         <div class="env-box">
-          <span class="icon">🌡️</span>
-          <span class="label">Temperature:</span>
+          <span class="icon">Temperature</span>
           <span id="tempValue">27.5°C</span>
-          <span class="unit"></span>
         </div>
         <div class="env-box">
-          <span class="icon">💧</span>
-          <span class="label">Humidity:</span>
+          <span class="icon">Humidity</span>
           <span id="humidityValue">62%</span>
-          <span class="unit"></span>
         </div>
-      </section>
+      </div>
   </main>
 
   <footer>
     <p>© 2024 Farm 14 Kiosk</p>
   </footer>
+  </div>
+
+  <div id="transcript-debug" style="position:fixed;bottom:10px;left:10px;padding:10px;background:#000;color:#0f0;font-size:14px;z-index:999;border-radius:8px;max-width:80%;opacity:0.8;">
+    <strong>Transcript:</strong> <span id="live-transcript">...</span>
   </div>
 </body>
 </html>
